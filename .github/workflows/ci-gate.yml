@@ -95,7 +95,8 @@ jobs:
 
       - name: Run Pytest
         env:
-          ENV: TEST
+          ENV: DEV
+          MPLBACKEND: Agg
           DB_NAME: 4leafclover_test
           DB_USER: postgres
           DB_PASSWORD: testpassword

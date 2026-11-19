@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -102,11 +103,14 @@ def generate_candlestick_png(
             if zoom_end:
                 cmd.extend(["--zoom-end", zoom_end])
 
+            sub_env = os.environ.copy()
+            sub_env["MPLBACKEND"] = "Agg"
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=45,
+                env=sub_env,
             )
 
             if result.returncode != 0 or not png_file.exists():
