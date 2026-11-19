@@ -14,10 +14,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 Write-Host "=== Step 1: Setting GCP Project Context ===" -ForegroundColor Cyan
-gcloud config set project $ProjectId
+gcloud.cmd config set project $ProjectId
 
 Write-Host "=== Step 2: Enabling Required GCP APIs ===" -ForegroundColor Cyan
-gcloud services enable `
+gcloud.cmd services enable `
     run.googleapis.com `
     sqladmin.googleapis.com `
     artifactregistry.googleapis.com `
@@ -27,9 +27,9 @@ gcloud services enable `
     --project $ProjectId
 
 Write-Host "=== Step 3: Creating Artifact Registry Repository ===" -ForegroundColor Cyan
-$repoExists = gcloud artifacts repositories list --location=$Region --format="value(name)" --filter="name:$RepoName"
+$repoExists = gcloud.cmd artifacts repositories list --location=$Region --format="value(name)" --filter="name:$RepoName"
 if (-not $repoExists) {
-    gcloud artifacts repositories create $RepoName `
+    gcloud.cmd artifacts repositories create $RepoName `
         --repository-format=docker `
         --location=$Region `
         --description="Docker repository for Alpha_Insight web and batch jobs" `
@@ -41,9 +41,9 @@ if (-not $repoExists) {
 
 Write-Host "=== Step 4: Creating GitHub Actions Service Account ===" -ForegroundColor Cyan
 $SaEmail = "$SaName@$ProjectId.iam.gserviceaccount.com"
-$saExists = gcloud iam service-accounts list --format="value(email)" --filter="email:$SaEmail"
+$saExists = gcloud.cmd iam service-accounts list --format="value(email)" --filter="email:$SaEmail"
 if (-not $saExists) {
-    gcloud iam service-accounts create $SaName `
+    gcloud.cmd iam service-accounts create $SaName `
         --display-name="GitHub Actions Deployer" `
         --project=$ProjectId
     Write-Host "Created Service Account: $SaEmail" -ForegroundColor Green
@@ -61,7 +61,7 @@ $roles = @(
 )
 
 foreach ($r in $roles) {
-    gcloud projects add-iam-policy-binding $ProjectId `
+    gcloud.cmd projects add-iam-policy-binding $ProjectId `
         --member="serviceAccount:$SaEmail" `
         --role=$r `
         --condition=None `
@@ -70,9 +70,9 @@ foreach ($r in $roles) {
 }
 
 Write-Host "=== Step 6: Configuring Workload Identity Federation (WIF) ===" -ForegroundColor Cyan
-$poolExists = gcloud iam workload-identity-pools list --location=global --format="value(name)" --filter="name:$PoolName"
+$poolExists = gcloud.cmd iam workload-identity-pools list --location=global --format="value(name)" --filter="name:$PoolName"
 if (-not $poolExists) {
-    gcloud iam workload-identity-pools create $PoolName `
+    gcloud.cmd iam workload-identity-pools create $PoolName `
         --location="global" `
         --display-name="GitHub Actions Pool" `
         --project=$ProjectId
@@ -81,14 +81,14 @@ if (-not $poolExists) {
     Write-Host "Workload Identity Pool $PoolName already exists." -ForegroundColor Yellow
 }
 
-$providerExists = gcloud iam workload-identity-pools providers list `
+$providerExists = gcloud.cmd iam workload-identity-pools providers list `
     --workload-identity-pool=$PoolName `
     --location=global `
     --format="value(name)" `
     --filter="name:$ProviderName"
 
 if (-not $providerExists) {
-    gcloud iam workload-identity-pools providers create-oidc $ProviderName `
+    gcloud.cmd iam workload-identity-pools providers create-oidc $ProviderName `
         --location="global" `
         --workload-identity-pool=$PoolName `
         --display-name="GitHub Provider" `
@@ -101,11 +101,11 @@ if (-not $providerExists) {
 }
 
 Write-Host "=== Step 7: Authorizing GitHub Repository Impersonation ===" -ForegroundColor Cyan
-$ProjectNumber = gcloud projects describe $ProjectId --format="value(projectNumber)"
+$ProjectNumber = gcloud.cmd projects describe $ProjectId --format="value(projectNumber)"
 $WifPoolResource = "projects/$ProjectNumber/locations/global/workloadIdentityPools/$PoolName"
 $WifProviderFull = "$WifPoolResource/providers/$ProviderName"
 
-gcloud iam service-accounts add-iam-policy-binding $SaEmail `
+gcloud.cmd iam service-accounts add-iam-policy-binding $SaEmail `
     --role="roles/iam.workloadIdentityUser" `
     --member="principalSet://iam.googleapis.com/$WifPoolResource/attribute.repository/$GithubRepo" `
     --project=$ProjectId `
@@ -125,10 +125,10 @@ $secrets = @(
 )
 
 foreach ($s in $secrets) {
-    $secExists = gcloud secrets list --format="value(name)" --filter="name:$s" --project=$ProjectId
+    $secExists = gcloud.cmd secrets list --format="value(name)" --filter="name:$s" --project=$ProjectId
     if (-not $secExists) {
         Write-Host "Creating secret placeholder: $s (remember to set version payload)" -ForegroundColor Yellow
-        "" | gcloud secrets create $s --data-file=- --project=$ProjectId
+        "" | gcloud.cmd secrets create $s --data-file=- --project=$ProjectId
     }
 }
 

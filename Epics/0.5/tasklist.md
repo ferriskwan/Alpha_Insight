@@ -29,3 +29,16 @@
 - [x] Task 7: Deterministic CI Parity Gate Audit & GitHub Push <!-- id: 7 -->
   - Implementation: Run full 3-Tier gate (Ruff, Mypy, Vitest, Pytest), commit changes, push to branch `epic-0.5`.
   - Verification: 0 errors across all linters, typers, and 167 tests (86 backend + 81 frontend).
+- [x] Task 8: Live GCP Provisioning, WIF Configuration & Cloud Run Deployment Verification <!-- id: 8 -->
+  - Implementation:
+    - Executed `scripts/setup_gcp.py` to enable GCP APIs (`run`, `sqladmin`, `artifactregistry`, `secretmanager`, `iamcredentials`, `cloudbuild`), enable `github-actions-deployer` service account, bind IAM roles, and create WIF pool `github-pool`.
+    - Created OIDC provider `github-provider` with security constraint `--attribute-condition="assertion.repository == 'ferriskwan/Alpha_Insight'"`.
+    - Synchronized GitHub repository variables `WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT` via GitHub CLI.
+    - Provisioned Secret Manager secret versions (`alpha-db-password-dev`, `alpha-db-password`, `alpha-gemini-api-key`, `alpha-twelvedata-api-key`, `alpha-google-client-id`, `alpha-api-key-dev`, `alpha-api-key`).
+    - Aligned PostgreSQL table and sequence permissions for database migration execution on `4leafclover_dev`.
+    - Successfully executed GitHub Actions Run 44508867110:
+      - Alembic schema upgrade head completed cleanly against `4leafclover_dev`.
+      - Built & pushed Docker container `alpha-insight-web-dev` and `alpha-insight-daily-job-dev` to `asia-southeast1-docker.pkg.dev/gen-lang-client-0632004807/alpha-insight-repo`.
+      - Deployed Cloud Run Service `alpha-insight-web-dev` (`https://alpha-insight-web-dev-db25tnv5aa-as.a.run.app`).
+      - Deployed Cloud Run Job `alpha-insight-daily-job-dev` (Status: Ready=True).
+      - Health check probe `/api/health` returned HTTP 200 `{"status":"ok","env":"DEV"}`.
