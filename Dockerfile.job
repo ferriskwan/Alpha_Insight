@@ -1,0 +1,29 @@
+# syntax=docker/dockerfile:1.4
+# Dedicated Cloud Run Job Container for Daily Market Data Ingestion & Valuation Pipeline
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gcc \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
+
+# Copy dependency configuration
+COPY pyproject.toml ./
+RUN uv pip install --system -r pyproject.toml || pip install --no-cache-dir requests yfinance psycopg2-binary sqlalchemy pydantic-settings matplotlib mplfinance mplcursors
+
+# Copy pipeline batch scripts and backend models
+COPY main.py marketdata.py ProcessData.py charting.py run_mark_to_market.py run_daily_margin_interest.py run_portfolio_summary.py ./
+COPY backend/ ./backend/
+
+# Create non-root user
+RUN useradd -m -u 1000 jobuser && chown -R jobuser:jobuser /app
+USER jobuser
+
+ENV PYTHONUNBUFFERED=1
+
+ENTRYPOINT ["python", "main.py"]

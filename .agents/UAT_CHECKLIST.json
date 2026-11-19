@@ -1,0 +1,56 @@
+{
+  "epic": "0.1",
+  "title": "Alpha_Insight Monolithic Reboot & Cloud Automation",
+  "scope": "MAJOR_ARCHITECTURAL",
+  "uat_items": [
+    {
+      "id": "UAT-001",
+      "requirement": "FR-1: Non-Destructive Legacy Source Isolation & Untouched charting.py",
+      "description": "Verify that legacy repositories (AlphaInsight and 4leafclover) have zero modified files and that copied charting.py in Alpha_Insight matches the source file byte-for-byte (SHA-256 hash equality).",
+      "verification_command": "uv run pytest tests/backend/test_source_isolation.py",
+      "status": "PASSED"
+    },
+    {
+      "id": "UAT-002",
+      "requirement": "FR-5: Database Continuity & Alembic Version Control",
+      "description": "Verify that SQLAlchemy models map all 13 existing 4leafclover tables plus user_sessions and job_execution_log, and that Alembic migrations 0001 and 0002 compile and upgrade cleanly.",
+      "verification_command": "uv run pytest tests/backend/test_alembic_migrations.py",
+      "status": "PASSED"
+    },
+    {
+      "id": "UAT-003",
+      "requirement": "FR-2: Monolithic FastAPI Auth, Sessions, Watchlist, Portfolio & Transactions API",
+      "description": "Verify FastAPI endpoints for Google OAuth / mock login, PostgreSQL session persistence, watchlist data retrieval, portfolio dashboard aggregation, transaction CRUD, and AI analysis.",
+      "verification_command": "uv run pytest tests/backend/test_api_endpoints.py",
+      "status": "PASSED"
+    },
+    {
+      "id": "UAT-004",
+      "requirement": "FR-4 (Backend): Untouched charting.py Execution Service",
+      "description": "Verify that chart_runner.py invokes untouched charting.py using an OS-agnostic temporary directory and returns a valid base64 PNG image.",
+      "verification_command": "uv run pytest tests/backend/test_chart_runner.py",
+      "status": "PASSED"
+    },
+    {
+      "id": "UAT-005",
+      "requirement": "FR-6: Standalone Cloud Run Job Pipeline (main.py)",
+      "description": "Verify that main.py runs the daily pipeline steps, records execution status in job_execution_log, and uses externalized configuration with no hardcoded magic numbers.",
+      "verification_command": "uv run pytest tests/backend/test_daily_job_pipeline.py",
+      "status": "PASSED"
+    },
+    {
+      "id": "UAT-006",
+      "requirement": "FR-3: Centralized Design System & Zero Hardcoding Audit",
+      "description": "Verify that all Design System primitives render properly and that zero feature components in frontend/src/components/ contain hardcoded hex colors (e.g., #[0-9A-Fa-f]{6}) or hardcoded localhost URLs.",
+      "verification_command": "npx.cmd vitest run tests/frontend/design_system_audit.test.tsx",
+      "status": "PASSED"
+    },
+    {
+      "id": "UAT-007",
+      "requirement": "FR-3 & FR-4 (Frontend): Dual Chart Comparison Switcher & Mobile/Desktop Ergonomics",
+      "description": "Verify ChartComparisonView 3-way switcher (Matplotlib PNG, Interactive Canvas, Split Compare), touch-enabled zoom slider, mobile accordion cards, and responsive layouts.",
+      "verification_command": "npx.cmd vitest run tests/frontend/components.test.tsx",
+      "status": "PASSED"
+    }
+  ]
+}

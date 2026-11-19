@@ -1,0 +1,77 @@
+[project]
+name = "alpha-insight"
+version = "0.1.0"
+description = "Alpha_Insight Monolithic Financial Analytics, Portfolio Management, and Cloud Pipeline Application"
+readme = "Epics/0.1/PRD.md"
+requires-python = ">=3.11"
+dependencies = [
+    "alembic>=1.14.0",
+    "fastapi>=0.115.0",
+    "google-auth>=2.35.0",
+    "google-genai>=1.0.0",
+    "httpx>=0.27.0",
+    "matplotlib>=3.9.0",
+    "mplcursors>=0.5.3",
+    "mplfinance>=0.12.10b0",
+    "numpy>=2.0.0",
+    "openai>=1.55.0",
+    "pandas>=2.2.0",
+    "psycopg2-binary>=2.9.9",
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.0",
+    "scipy>=1.14.0",
+    "sqlalchemy>=2.0.36",
+    "uvicorn[standard]>=0.32.0",
+    "yfinance>=0.2.50",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13.0",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.8.0",
+    "types-psycopg2>=2.9.21",
+    "types-requests>=2.32.0",
+]
+
+[tool.uv]
+native-tls = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = [
+    "charting.py",
+    "ProcessData.py",
+    "frontend",
+    "node_modules",
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [
+    "^charting\\.py$",
+    "^ProcessData\\.py$",
+    "^frontend/",
+]
+
+[[tool.mypy.overrides]]
+module = ["ProcessData"]
+follow_imports = "skip"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/backend"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
