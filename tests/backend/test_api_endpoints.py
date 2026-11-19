@@ -320,3 +320,25 @@ class TestAnalysisEndpointUAT003:
             assert data["symbol"] == "AAPL"
             assert "Bullish momentum" in data["markdown"]
             assert len(data["groundingLinks"]) == 1
+
+
+class TestCloudSqlUnixSocketConfig:
+    """Verify Cloud SQL Unix domain socket configuration for Cloud Run."""
+
+    def test_cloud_sql_unix_socket_uri(self) -> None:
+        """Verify that DB_HOST with /cloudsql/ creates a socket URI without TCP port."""
+        from backend.config import Settings
+
+        settings = Settings(
+            DB_HOST="/cloudsql/gen-lang-client-0632004807:asia-southeast1:clover",
+            DB_NAME="4leafclover_dev",
+            DB_USER="postgres",
+            DB_PASSWORD="testpassword",
+            DB_PORT=5432,
+            DB_SSLMODE="disable",
+        )
+        assert settings.resolved_db_host == "/cloudsql/gen-lang-client-0632004807:asia-southeast1:clover"
+        assert settings.sqlalchemy_database_uri == (
+            "postgresql+psycopg2://postgres:testpassword@/4leafclover_dev"
+            "?host=/cloudsql/gen-lang-client-0632004807:asia-southeast1:clover"
+        )

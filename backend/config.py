@@ -98,6 +98,8 @@ class Settings(BaseSettings):
     @property
     def resolved_db_host(self) -> str:
         """Return DB_PUBLIC_IP when DB_HOST is a Cloud SQL instance name, matching ProcessData.py."""
+        if self.db_host and self.db_host.startswith("/cloudsql/"):
+            return self.db_host
         if self.db_public_ip and self.db_public_ip != "localhost":
             return self.db_public_ip
         if self.db_host and ":" in self.db_host and self.db_host.count(":") >= 2:
@@ -111,6 +113,8 @@ class Settings(BaseSettings):
             return self.database_url_override
         encoded_user = quote_plus(self.db_user)
         encoded_pwd = quote_plus(self.db_password)
+        if self.db_host and self.db_host.startswith("/cloudsql/"):
+            return f"postgresql+psycopg2://{encoded_user}:{encoded_pwd}@/{self.db_name}?host={self.db_host}"
         return (
             f"postgresql+psycopg2://{encoded_user}:{encoded_pwd}"
             f"@{self.resolved_db_host}:{self.db_port}/{self.db_name}"

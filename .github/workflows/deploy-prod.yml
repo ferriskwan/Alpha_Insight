@@ -1,0 +1,197 @@
+name: "Deploy to Production (Cloud Run)"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: "gen-lang-client-0632004807"
+  REGION: "asia-southeast1"
+  INSTANCE_CONNECTION: "gen-lang-client-0632004807:asia-southeast1:clover"
+  REGISTRY_HOST: "asia-southeast1-docker.pkg.dev"
+  REPOSITORY: "alpha-insight-repo"
+  PROD_DB_NAME: "4leafclover"
+
+jobs:
+  deploy-prod:
+    name: "Gated Release to Production (Cloud Run)"
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (WIF)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+
+      - name: Configure Docker Authentication
+        run: gcloud auth configure-docker ${{ env.REGISTRY_HOST }} --quiet
+
+      - name: Install uv & Python 3.11
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install Dependencies
+        run: uv sync --all-groups
+
+      - name: Install Cloud SQL Auth Proxy
+        run: |
+          curl -o cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.0/cloud-sql-proxy.linux.amd64
+          chmod +x cloud-sql-proxy
+
+      - name: Run Database Migrations (4leafclover Production)
+        run: |
+          echo "Starting Cloud SQL Proxy for instance: ${{ env.INSTANCE_CONNECTION }}"
+          ./cloud-sql-proxy --port 5432 ${{ env.INSTANCE_CONNECTION }} &
+          PROXY_PID=$!
+          sleep 3
+
+          # Fetch Production DB password from Secret Manager
+          DB_PWD=$(gcloud secrets versions access latest --secret=alpha-db-password)
+
+          echo "Executing Alembic schema upgrade head on ${{ env.PROD_DB_NAME }}..."
+          ENV=PRD \
+          DB_HOST=127.0.0.1 \
+          DB_PORT=5432 \
+          DB_NAME=${{ env.PROD_DB_NAME }} \
+          DB_USER=postgres \
+          DB_PASSWORD="${DB_PWD}" \
+          DB_SSLMODE=disable \
+          uv run alembic upgrade head
+
+          kill $PROXY_PID
+
+      - name: Build & Push Web Container (PROD)
+        env:
+          IMAGE_TAG: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-web"
+        run: |
+          docker build \
+            -f Dockerfile.web \
+            -t ${IMAGE_TAG}:${{ github.sha }} \
+            -t ${IMAGE_TAG}:latest \
+            .
+          docker push ${IMAGE_TAG}:${{ github.sha }}
+          docker push ${IMAGE_TAG}:latest
+
+      - name: Build & Push Daily Job Container (PROD)
+        env:
+          IMAGE_TAG: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-daily-job"
+        run: |
+          docker build \
+            -f Dockerfile.job \
+            -t ${IMAGE_TAG}:${{ github.sha }} \
+            -t ${IMAGE_TAG}:latest \
+            .
+          docker push ${IMAGE_TAG}:${{ github.sha }}
+          docker push ${IMAGE_TAG}:latest
+
+      - name: Deploy Cloud Run Service (alpha-insight-web)
+        env:
+          IMAGE_URI: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-web:${{ github.sha }}"
+        run: |
+          gcloud run deploy alpha-insight-web \
+            --image ${IMAGE_URI} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated \
+            --port 8080 \
+            --memory 1Gi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 10 \
+            --add-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
+            --set-env-vars "\
+          ENV=PRD,\
+          DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
+          DB_NAME=${{ env.PROD_DB_NAME }},\
+          DB_USER=postgres,\
+          DB_PORT=5432,\
+          DB_SSLMODE=disable,\
+          SUPERADMIN_EMAIL=ferriskwan@gmail.com" \
+            --set-secrets "\
+          DB_PASSWORD=alpha-db-password:latest,\
+          GEMINI_API_KEY=alpha-gemini-api-key:latest,\
+          TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest,\
+          GOOGLE_CLIENT_ID=alpha-google-client-id:latest,\
+          API_KEY=alpha-api-key:latest" \
+            --project ${{ env.PROJECT_ID }}
+
+      - name: Deploy Cloud Run Job (alpha-insight-daily-job)
+        env:
+          IMAGE_URI: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-daily-job:${{ github.sha }}"
+        run: |
+          # Create or update Cloud Run Job
+          if gcloud run jobs describe alpha-insight-daily-job --region ${{ env.REGION }} >/dev/null 2>&1; then
+            gcloud run jobs update alpha-insight-daily-job \
+              --image ${IMAGE_URI} \
+              --region ${{ env.REGION }} \
+              --memory 1Gi \
+              --cpu 1 \
+              --max-retries 1 \
+              --set-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
+              --set-env-vars "\
+            ENV=PRD,\
+            DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
+            DB_NAME=${{ env.PROD_DB_NAME }},\
+            DB_USER=postgres,\
+            DB_PORT=5432,\
+            DB_SSLMODE=disable" \
+              --set-secrets "\
+            DB_PASSWORD=alpha-db-password:latest,\
+            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest" \
+              --project ${{ env.PROJECT_ID }}
+          else
+            gcloud run jobs create alpha-insight-daily-job \
+              --image ${IMAGE_URI} \
+              --region ${{ env.REGION }} \
+              --memory 1Gi \
+              --cpu 1 \
+              --max-retries 1 \
+              --set-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
+              --set-env-vars "\
+            ENV=PRD,\
+            DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
+            DB_NAME=${{ env.PROD_DB_NAME }},\
+            DB_USER=postgres,\
+            DB_PORT=5432,\
+            DB_SSLMODE=disable" \
+              --set-secrets "\
+            DB_PASSWORD=alpha-db-password:latest,\
+            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest" \
+              --project ${{ env.PROJECT_ID }}
+          fi
+
+      - name: Validate Production Health Endpoint Probe
+        run: |
+          WEB_URL=$(gcloud run services describe alpha-insight-web --region ${{ env.REGION }} --format="value(status.url)")
+          echo "Deployed Production Web URL: ${WEB_URL}"
+          echo "Probing /api/health..."
+          curl -f -s "${WEB_URL}/api/health" | grep -q '"status":"ok"' || {
+            echo "Health probe failed on ${WEB_URL}/api/health"
+            exit 1
+          }
+          echo "Production health probe verified successfully (HTTP 200 OK)."

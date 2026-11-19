@@ -24,7 +24,12 @@ def _get_db_config() -> Dict[str, Any]:
     if not public_ip:
         raise RuntimeError("DB_PUBLIC_IP or DB_HOST must be set")
 
-    if ":" in public_ip and public_ip.count(":") >= 2 and not os.getenv("DB_PUBLIC_IP"):
+    if (
+        ":" in public_ip
+        and public_ip.count(":") >= 2
+        and not public_ip.startswith("/cloudsql/")
+        and not os.getenv("DB_PUBLIC_IP")
+    ):
         raise RuntimeError(
             "DB_HOST appears to be a Cloud SQL instance connection name. Set DB_PUBLIC_IP to the public IP address."
         )
