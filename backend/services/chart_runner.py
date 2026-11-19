@@ -105,21 +105,23 @@ def generate_candlestick_png(
 
             sub_env = os.environ.copy()
             sub_env["MPLBACKEND"] = "Agg"
+            sub_env["PYTHONPATH"] = str(project_root)
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=45,
                 env=sub_env,
+                cwd=str(project_root),
             )
 
             if result.returncode != 0 or not png_file.exists():
-                logger.error(
-                    "charting.py execution failed (exit code %d): stderr=%s, stdout=%s",
-                    result.returncode,
-                    result.stderr,
-                    result.stdout,
+                err_msg = (
+                    f"charting.py execution failed (exit code {result.returncode}): "
+                    f"stderr={result.stderr}, stdout={result.stdout}"
                 )
+                logger.error(err_msg)
+                sys.stderr.write(f"\n[CHART_RUNNER ERROR] {err_msg}\n")
                 return None
 
             png_bytes = png_file.read_bytes()
@@ -127,5 +129,7 @@ def generate_candlestick_png(
             return f"data:image/png;base64,{b64_str}"
 
     except Exception as exc:
-        logger.error("Exception occurred while generating candlestick chart: %s", exc, exc_info=True)
+        err_msg = f"Exception occurred while generating candlestick chart: {exc}"
+        logger.error(err_msg, exc_info=True)
+        sys.stderr.write(f"\n[CHART_RUNNER EXCEPTION] {err_msg}\n")
         return None

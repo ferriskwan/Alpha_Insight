@@ -103,7 +103,7 @@ jobs:
           DB_PORT: 5432
           DB_HOST: localhost
           DB_SSLMODE: disable
-        run: uv run pytest -v
+        run: uv run pytest -v -s
 
   frontend-tests:
     name: "Tier 3: Frontend Vitest Suite"
