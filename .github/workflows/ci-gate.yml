@@ -1,0 +1,128 @@
+name: "CI Validation Gate"
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-format:
+    name: "Tier 1: Ruff Lint & Format"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run Ruff Linter
+        run: uv run ruff check .
+
+      - name: Run Ruff Format Check
+        run: uv run ruff format --check .
+
+  type-check:
+    name: "Tier 2: Static Type Integrity"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install Python dependencies
+        run: uv sync --all-groups
+
+      - name: Run Mypy (Backend)
+        run: uv run mypy backend
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run TypeScript Compiler Check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+  backend-tests:
+    name: "Tier 3: Backend Automated Test Suite"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          version: "latest"
+
+      - name: Set up Python 3.11
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      - name: Run Pytest
+        env:
+          ENV: DEV
+          MPLBACKEND: Agg
+          DB_NAME: 4leafclover_test
+          DB_USER: postgres
+          DB_PASSWORD: testpassword
+          DB_PORT: 5432
+          DB_HOST: localhost
+          DB_SSLMODE: disable
+        run: uv run pytest -v -s
+
+  frontend-tests:
+    name: "Tier 3: Frontend Vitest Suite"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Vitest Suite
+        working-directory: frontend
+        run: npm test -- --run

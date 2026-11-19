@@ -83,7 +83,7 @@ def sample_trades() -> list[dict[str, Any]]:
 class TestChartRunnerUAT004:
     """UAT-004 Test Suite validating chart_runner subprocess invocation and base64 PNG rendering."""
 
-    CHARTING_PY_PATH = Path("C:/Users/ferri/devt/Alpha_Insight/charting.py")
+    CHARTING_PY_PATH = Path(__file__).resolve().parent.parent.parent / "charting.py"
 
     def test_generate_candlestick_png_valid_output(
         self,

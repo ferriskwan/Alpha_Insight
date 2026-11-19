@@ -23,16 +23,17 @@ def _compute_sha256(file_path: Path) -> str:
 class TestSourceIsolationUAT001:
     """UAT-001 Test Suite validating source isolation, SHA-256 integrity, and config externalization."""
 
-    DEV_ROOT = Path("C:/Users/ferri/devt/Alpha_Insight")
+    DEV_ROOT = Path(__file__).resolve().parent.parent.parent
     LEGACY_ALPHAINSIGHT = Path("C:/Users/ferri/OneDrive/Documents/AlphaInsight")
     LEGACY_4LEAFCLOVER = Path("C:/Users/ferri/OneDrive/Documents/4leafclover")
 
     def test_charting_py_exists_and_sha256_matches_legacy(self) -> None:
         """Verify that charting.py in Alpha_Insight matches the legacy file byte-for-byte."""
         target_charting = self.DEV_ROOT / "charting.py"
-        legacy_charting = self.LEGACY_ALPHAINSIGHT / "charting.py"
-
         assert target_charting.exists(), f"Target file does not exist: {target_charting}"
+        if not self.LEGACY_ALPHAINSIGHT.exists():
+            pytest.skip("Legacy AlphaInsight directory only exists on local developer workstation")
+        legacy_charting = self.LEGACY_ALPHAINSIGHT / "charting.py"
         assert legacy_charting.exists(), f"Legacy reference file does not exist: {legacy_charting}"
 
         target_hash = _compute_sha256(target_charting)
@@ -98,6 +99,8 @@ class TestSourceIsolationUAT001:
 
     def test_legacy_directories_accessible_and_intact(self) -> None:
         """Verify that legacy reference directories exist and contain key source files."""
+        if not self.LEGACY_ALPHAINSIGHT.exists() or not self.LEGACY_4LEAFCLOVER.exists():
+            pytest.skip("Legacy reference directories only exist on local developer workstation")
         assert self.LEGACY_ALPHAINSIGHT.is_dir()
         assert self.LEGACY_4LEAFCLOVER.is_dir()
         assert (self.LEGACY_ALPHAINSIGHT / "charting.py").exists()
