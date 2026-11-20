@@ -28,3 +28,21 @@ Epic 0.5 establishes a zero-secret, automated deployment pipeline between GitHub
    - `uv run pytest tests/backend/test_api_endpoints.py`: 18/18 passed including Cloud SQL socket URI generation.
    - `uv run ruff check .`: 0 errors.
    - `uv run ruff format --check .`: 0 errors (all files formatted).
+
+---
+
+## 4. Live Deployment Verification (Run 44508867110)
+
+- **Workflow Run**: [GitHub Actions Run 44508867110](https://github.com/ferriskwan/Alpha_Insight/actions/runs/44508867110)
+- **Workload Identity Federation**: Successfully authenticated service account `github-actions-deployer@gen-lang-client-0632004807.iam.gserviceaccount.com` via pool `github-pool` / provider `github-provider`.
+- **Database Migrations**: Executed `alembic upgrade head` via Cloud SQL Proxy against `4leafclover_dev` (instance `gen-lang-client-0632004807:asia-southeast1:clover`). Current head: revision `0008`.
+- **Artifact Registry**: Docker images built and pushed to `asia-southeast1-docker.pkg.dev/gen-lang-client-0632004807/alpha-insight-repo`:
+  - Web: `alpha-insight-web-dev`
+  - Job: `alpha-insight-daily-job-dev`
+- **Cloud Run Service (Web)**:
+  - Service Name: `alpha-insight-web-dev`
+  - URL: `https://alpha-insight-web-dev-db25tnv5aa-as.a.run.app`
+  - Health Probe: `GET /api/health` returned HTTP 200 `{"status":"ok","env":"DEV"}`
+- **Cloud Run Job (Batch)**:
+  - Job Name: `alpha-insight-daily-job-dev`
+  - Status: `Ready: True` (observedGeneration: 1)

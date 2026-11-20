@@ -61,7 +61,7 @@ const ANALYSIS_TABS: AnalystOutputTabItem[] = [
 ];
 
 export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
-  initialSymbol = 'AAPL',
+  initialSymbol = '',
   onReferenceInNote,
   onContextUpdate,
 }) => {
@@ -75,7 +75,7 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
     },
   ]);
 
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || 'AAPL');
+  const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '');
   const [selectedModel, setSelectedModel] = useState<string>('gemini-4-argon');
   const [lookbackRuns, setLookbackRuns] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<AnalystRoleType>('executive_summary');
@@ -107,39 +107,16 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
       if (!mounted) return;
       if (wlItems && wlItems.length > 0) {
         setWatchlist(wlItems);
+        // Automatically default to the first real watchlist symbol if selectedSymbol is empty or not in watchlist
+        const symSet = new Set(wlItems.map((w) => w.symbol));
+        if (!selectedSymbol || !symSet.has(selectedSymbol)) {
+          setSelectedSymbol(wlItems[0].symbol);
+        }
       } else {
-        setWatchlist([
-          {
-            user_id: 1,
-            symbol: 'AAPL',
-            name: 'Apple Inc.',
-            watchlistname: 'Default',
-            lastPrice: 185.0,
-            change: 1.4,
-            changePct: 0.76,
-            dayHigh: 186.5,
-            dayLow: 183.2,
-            volume: 2400000,
-            high52: 199.62,
-            low52: 164.08,
-            currency: 'USD',
-          },
-          {
-            user_id: 1,
-            symbol: 'NVDA',
-            name: 'NVIDIA Corp.',
-            watchlistname: 'Default',
-            lastPrice: 128.5,
-            change: 3.1,
-            changePct: 2.47,
-            dayHigh: 130.0,
-            dayLow: 125.0,
-            volume: 4100000,
-            high52: 140.76,
-            low52: 75.6,
-            currency: 'USD',
-          },
-        ]);
+        setWatchlist([]);
+        if (!selectedSymbol) {
+          setLoadingInitial(false);
+        }
       }
 
       if (modelItems && modelItems.length > 0) {
@@ -246,7 +223,17 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
   };
 
   useEffect(() => {
-    loadSymbolDataAndLatestRun(selectedSymbol);
+    if (selectedSymbol) {
+      loadSymbolDataAndLatestRun(selectedSymbol);
+    } else {
+      setChartCandles([]);
+      setIntradayCandles([]);
+      setChartTrades([]);
+      setRuns([]);
+      setPastOutputs([]);
+      setActiveRun(null);
+      setLoadingInitial(false);
+    }
   }, [selectedSymbol]);
 
   const handleRunCommittee = async () => {

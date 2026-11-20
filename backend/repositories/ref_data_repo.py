@@ -52,6 +52,14 @@ def get_sysvalue_by_name(db: Session, name: str) -> Optional[SysValue]:
     return db.scalar(select(SysValue).where(SysValue.name == name))
 
 
+def get_default_currency(db: Session) -> str:
+    """Retrieve global default currency code from sysvalue, defaulting to SGD."""
+    record = get_sysvalue_by_name(db, "DEFAULT_CURRENCY")
+    if record and record.strvalue:
+        return record.strvalue.strip().upper()
+    return "SGD"
+
+
 def update_sysvalue(
     db: Session,
     name: str,

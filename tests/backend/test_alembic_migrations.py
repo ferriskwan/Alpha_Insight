@@ -66,7 +66,9 @@ class TestAlembicMigrationsUAT002:
             db_path = tf.name
 
         sqlite_url = f"sqlite:///{Path(db_path).as_posix()}"
-        cfg = Config("alembic.ini")
+        alembic_ini = Path(__file__).resolve().parent.parent.parent / "alembic.ini"
+        cfg = Config(str(alembic_ini))
+        cfg.set_main_option("script_location", str(alembic_ini.parent / "alembic"))
         cfg.set_main_option("sqlalchemy.url", sqlite_url)
 
         try:

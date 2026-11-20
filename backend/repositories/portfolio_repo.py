@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional, Union
 
 from sqlalchemy import desc, func, select
@@ -18,6 +18,7 @@ from backend.db.models import (
     TransCost,
 )
 from backend.repositories.market_repo import get_latest_fx_rates
+from backend.repositories.ref_data_repo import get_default_currency
 from backend.schemas.transactions import (
     CapitalTransactionInput,
     TradeTransactionInput,
@@ -32,15 +33,30 @@ def get_positions(
     user_id: int = 1,
     tradedate: Optional[date] = None,
 ) -> list[Position]:
-    """Retrieve positions for a user on a given date (defaults to latest tradedate)."""
-    stmt = select(Position).where(Position.user_id == user_id)
+    """Retrieve positions for a user on a given date.
+
+    Defaults to latest per-symbol tradedate on or before target date.
+    """
+    subq_stmt = select(
+        Position.symbol,
+        Position.investment,
+        func.max(Position.tradedate).label("max_tradedate"),
+    ).where(Position.user_id == user_id)
     if tradedate:
-        stmt = stmt.where(Position.tradedate == tradedate)
-    else:
-        # Default to latest tradedate recorded
-        subq = select(func.max(Position.tradedate)).where(Position.user_id == user_id).scalar_subquery()
-        stmt = stmt.where(Position.tradedate == subq)
-    stmt = stmt.order_by(Position.symbol)
+        subq_stmt = subq_stmt.where(Position.tradedate <= tradedate)
+    subq = subq_stmt.group_by(Position.symbol, Position.investment).subquery()
+
+    stmt = (
+        select(Position)
+        .join(
+            subq,
+            (Position.symbol == subq.c.symbol)
+            & (Position.investment == subq.c.investment)
+            & (Position.tradedate == subq.c.max_tradedate),
+        )
+        .where(Position.user_id == user_id)
+        .order_by(Position.symbol)
+    )
     return list(db.scalars(stmt).all())
 
 
@@ -390,7 +406,7 @@ def delete_trade(db: Session, user_id: int, trade_id: int) -> bool:
 def get_daily_portfolio_summaries(
     db: Session,
     user_id: int = 1,
-    limit: int = 365,
+    limit: int = 1500,
 ) -> list[DailyPortfolioSummary]:
     """Retrieve chronologically ordered daily portfolio summaries."""
     stmt = (
@@ -435,6 +451,7 @@ def get_portfolio_dashboard(
     user_id: int = 1,
     currency: str = "USD",
     account: str = "All",
+    limit: int = 1500,
 ) -> dict[str, Any]:
     """Synthesize complete portfolio dashboard KPI summary, balance matrix, and series."""
     fx_rates = get_latest_fx_rates(db, base_currency="USD")
@@ -443,13 +460,13 @@ def get_portfolio_dashboard(
 
     positions = get_positions(db, user_id=user_id)
     capital_records = get_capital(db, user_id=user_id)
-    daily_summaries = get_daily_portfolio_summaries(db, user_id=user_id, limit=365)
+    daily_summaries = get_daily_portfolio_summaries(db, user_id=user_id, limit=limit)
 
     # Fallback to user_id=1 if logged-in user has no portfolio records yet
     if not positions and not capital_records and not daily_summaries and user_id != 1:
         positions = get_positions(db, user_id=1)
         capital_records = get_capital(db, user_id=1)
-        daily_summaries = get_daily_portfolio_summaries(db, user_id=1, limit=365)
+        daily_summaries = get_daily_portfolio_summaries(db, user_id=1, limit=limit)
 
     # Helper to check if an investment boolean matches account filter
     def _matches_account(is_investment: bool) -> bool:
@@ -578,6 +595,8 @@ def get_portfolio_dashboard(
         day_pnl = 0.0
         day_r_pnl = 0.0
         day_u_pnl = 0.0
+        day_loan = 0.0
+        day_interest = 0.0
         for s in day_rows:
             s_ccy = (s.currency or "USD").upper()
             day_eq += _convert_amount(_clean_float(s.total_asset_value), s_ccy, target_ccy, fx_rates)
@@ -585,6 +604,8 @@ def get_portfolio_dashboard(
             day_pnl += _convert_amount(_clean_float(s.total_pnl), s_ccy, target_ccy, fx_rates)
             day_r_pnl += _convert_amount(_clean_float(s.realized_pnl), s_ccy, target_ccy, fx_rates)
             day_u_pnl += _convert_amount(_clean_float(s.unrealized_pnl), s_ccy, target_ccy, fx_rates)
+            day_loan += _convert_amount(_clean_float(s.margin_loan_balance), s_ccy, target_ccy, fx_rates)
+            day_interest += _convert_amount(_clean_float(s.cumulative_interest_accrued), s_ccy, target_ccy, fx_rates)
         day_pct = (day_pnl / day_cap * 100.0) if day_cap > 0 else 0.0
         perf_series.append(
             {
@@ -592,6 +613,8 @@ def get_portfolio_dashboard(
                 "totalEquity": _clean_float(day_eq),
                 "totalCapital": _clean_float(day_cap),
                 "totalAssetValue": _clean_float(day_eq),
+                "marginLoan": _clean_float(day_loan),
+                "interestAccrued": _clean_float(day_interest),
                 "totalPnL": _clean_float(day_pnl),
                 "pctPnL": _clean_float(day_pct),
                 "realizedPnL": _clean_float(day_r_pnl),
@@ -841,13 +864,36 @@ def get_portfolio_4chart_overview(
     user_id: int = 1,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    currency: str = "USD",
+    currency: Optional[str] = None,
+    timeframe: str = "12M",
 ) -> dict[str, Any]:
-    """Return synchronized 4-chart analytical overview data (Equity vs SPY, Cumulative PnL, Allocation, Drawdown)."""
-    dashboard = get_portfolio_dashboard(db, user_id=user_id, currency=currency)
+    """Return synchronized institutional analytical overview data for Epic 0.6.
+
+    Includes 6 formula-backed KPI badges, Chart 1 (Portfolio Size, Capital, Margin),
+    and Chart 2 (Total Portfolio PnL & Top Stocks Breakdown).
+    """
+    target_currency = (currency or get_default_currency(db)).upper()
+    dashboard = get_portfolio_dashboard(db, user_id=user_id, currency=target_currency, limit=1500)
     perf_series = dashboard.get("performanceSeries", [])
     summary = dashboard.get("summary", {})
     positions = dashboard.get("positions", [])
+
+    # Filter by timeframe if explicit start_date not provided
+    if perf_series:
+        max_d_dt = datetime.fromisoformat(perf_series[-1]["date"]).date()
+        if not start_date and timeframe:
+            tf_clean = str(timeframe).upper()
+            days = 365
+            if tf_clean == "1M":
+                days = 30
+            elif tf_clean == "3M":
+                days = 90
+            elif tf_clean == "6M":
+                days = 180
+            elif tf_clean in ("12M", "1Y"):
+                days = 365
+            cutoff_date = (max_d_dt - timedelta(days=days)).isoformat()
+            perf_series = [p for p in perf_series if p["date"] >= cutoff_date]
 
     # Filter by date if provided
     if start_date:
@@ -855,26 +901,123 @@ def get_portfolio_4chart_overview(
     if end_date:
         perf_series = [p for p in perf_series if p["date"] <= end_date]
 
-    # Chart 1: Equity Curve vs SPY Benchmark (Normalized benchmark)
+    # Drop weekends (Saturday = 5, Sunday = 6) from charts
+    perf_series = [p for p in perf_series if datetime.fromisoformat(p["date"]).date().weekday() < 5]
+
+    # Chart 1 (Epic 0.6): Portfolio Size, Capital, and Margin over time
+    chart1_pcm: list[dict[str, Any]] = []
+    base_eq = perf_series[0]["totalEquity"] if perf_series and perf_series[0]["totalEquity"] > 0 else 1.0
+    base_cap = perf_series[0]["totalCapital"] if perf_series and perf_series[0]["totalCapital"] > 0 else 1.0
+    base_loan = (
+        perf_series[0].get("marginLoan", 0.0) if perf_series and perf_series[0].get("marginLoan", 0.0) > 0 else 1.0
+    )
+
+    for pt in perf_series:
+        eq = pt["totalEquity"]
+        cap = pt["totalCapital"]
+        loan = pt.get("marginLoan", 0.0)
+        chart1_pcm.append(
+            {
+                "date": pt["date"],
+                "portfolioSize": round(eq, 2),
+                "portfolioSizePct": round(((eq - base_eq) / base_eq * 100.0) if base_eq > 0 else 0.0, 2),
+                "capital": round(cap, 2),
+                "capitalPct": round(((cap - base_cap) / base_cap * 100.0) if base_cap > 0 else 0.0, 2),
+                "margin": round(loan, 2),
+                "marginPct": round(((loan - base_loan) / base_loan * 100.0) if base_loan > 0 else 0.0, 2),
+            }
+        )
+
+    # Chart 2 (Epic 0.6): Cumulative PnL Attribution (Total Portfolio & Top Stocks)
+    chart2_port: list[dict[str, Any]] = []
+    for pt in perf_series:
+        pnl_val = pt["totalPnL"]
+        cap_val = pt["totalCapital"]
+        chart2_port.append(
+            {
+                "date": pt["date"],
+                "pnl": round(pnl_val, 2),
+                "pnlPct": round((pnl_val / cap_val * 100.0) if cap_val > 0 else 0.0, 2),
+            }
+        )
+
+    # Stock-level series breakdown derived from Position table
+    stock_breakdown: dict[str, list[dict[str, Any]]] = {}
+    if perf_series:
+        min_date_str = perf_series[0]["date"]
+        max_date_str = perf_series[-1]["date"]
+
+        pos_stmt = (
+            select(Position)
+            .where(Position.user_id == user_id, Position.tradedate >= min_date_str, Position.tradedate <= max_date_str)
+            .order_by(Position.tradedate, Position.symbol)
+        )
+        pos_rows = list(db.scalars(pos_stmt).all())
+        if not pos_rows and user_id != 1:
+            pos_stmt = (
+                select(Position)
+                .where(Position.user_id == 1, Position.tradedate >= min_date_str, Position.tradedate <= max_date_str)
+                .order_by(Position.tradedate, Position.symbol)
+            )
+            pos_rows = list(db.scalars(pos_stmt).all())
+
+        by_sym_dates: dict[str, dict[str, float]] = {}
+        by_sym_cost: dict[str, dict[str, float]] = {}
+        for pr in pos_rows:
+            sym = pr.symbol
+            if sym not in by_sym_dates:
+                by_sym_dates[sym] = {}
+                by_sym_cost[sym] = {}
+            qty = _clean_float(pr.quantity, 0.0)
+            close = _clean_float(pr.eodprice, 0.0)
+            avg = _clean_float(pr.avgprice, 0.0)
+            d_key = pr.tradedate.isoformat()
+            by_sym_dates[sym][d_key] = qty * (close - avg)
+            by_sym_cost[sym][d_key] = qty * avg
+
+        # Select top active stocks (up to 5)
+        top_symbols = sorted(by_sym_dates.keys(), key=lambda s: len(by_sym_dates[s]), reverse=True)[:5]
+        for s in top_symbols:
+            s_series = []
+            last_pnl = 0.0
+            last_cost = 1.0
+            has_started = False
+            for pt in perf_series:
+                d_str = pt["date"]
+                if d_str in by_sym_dates[s]:
+                    has_started = True
+                    last_pnl = by_sym_dates[s][d_str]
+                    last_cost = by_sym_cost[s].get(d_str, 1.0)
+                elif has_started:
+                    # Forward-fill previous known PnL on exchange holidays if position remains open
+                    pass
+                else:
+                    last_pnl = 0.0
+                    last_cost = 1.0
+                s_series.append(
+                    {
+                        "date": d_str,
+                        "pnl": round(last_pnl, 2),
+                        "pnlPct": round((last_pnl / last_cost * 100.0) if last_cost > 0 else 0.0, 2),
+                    }
+                )
+            stock_breakdown[s] = s_series
+
+    # Backward compatibility series for Epic 0.3 tests
     chart1_data = []
     base_equity = perf_series[0]["totalEquity"] if perf_series else 100000.0
-    hwm = 0.0
     for idx, pt in enumerate(perf_series):
-        # Synthetic high-correlation SPY benchmark for institutional comparison
         spy_mult = 1.0 + (idx * 0.00045) + ((idx % 7) * 0.001 - 0.003)
         spy_equity = base_equity * spy_mult
-        eq = pt["totalEquity"]
-        hwm = max(hwm, eq)
         chart1_data.append(
             {
                 "date": pt["date"],
-                "equity": round(eq, 2),
+                "equity": round(pt["totalEquity"], 2),
                 "benchmark": round(spy_equity, 2),
                 "totalCapital": round(pt["totalCapital"], 2),
             }
         )
 
-    # Chart 2: Cumulative Realized vs Unrealized PnL
     chart2_data = []
     for pt in perf_series:
         chart2_data.append(
@@ -886,7 +1029,6 @@ def get_portfolio_4chart_overview(
             }
         )
 
-    # Chart 3: Asset & Currency Allocation (Equities, Cash, Margin liability)
     chart3_data = []
     total_nav = summary.get("totalEquity", 100000.0) or 100000.0
     for pos in positions:
@@ -898,7 +1040,7 @@ def get_portfolio_4chart_overview(
                 "name": pos.get("symbol", "Stock"),
                 "value": round(mkt_val, 2),
                 "percentage": round(pct, 2),
-                "currency": currency,
+                "currency": target_currency,
             }
         )
     cash_bal = _clean_float(summary.get("cashBalance", 0.0))
@@ -907,14 +1049,13 @@ def get_portfolio_4chart_overview(
         chart3_data.append(
             {
                 "category": "Cash",
-                "name": f"Cash ({currency})",
+                "name": f"Cash ({target_currency})",
                 "value": round(cash_bal, 2),
                 "percentage": round(cash_pct, 2),
-                "currency": currency,
+                "currency": target_currency,
             }
         )
 
-    # Chart 4: Daily PnL Distribution & Drawdown curve
     chart4_data = []
     prev_eq = None
     curr_hwm = 0.0
@@ -934,16 +1075,51 @@ def get_portfolio_4chart_overview(
             }
         )
 
+    # 6 Badges Calculation
+    latest_pt = perf_series[-1] if perf_series else {}
+    first_pt = perf_series[0] if perf_series else {}
+    first_eq = first_pt.get("totalEquity", 0.0)
+    latest_eq = latest_pt.get("totalEquity", _clean_float(summary.get("totalEquity", 0.0)))
+    latest_cap = latest_pt.get("totalCapital", _clean_float(summary.get("totalCapital", 0.0)))
+    latest_loan = latest_pt.get("marginLoan", _clean_float(summary.get("marginLoan", 0.0)))
+    latest_rpnl = latest_pt.get("realizedPnL", _clean_float(summary.get("realizedPnL", 0.0)))
+    latest_upnl = latest_pt.get("unrealizedPnL", _clean_float(summary.get("unrealizedPnL", 0.0)))
+    latest_tot_pnl = latest_pt.get("totalPnL", _clean_float(summary.get("totalPnL", 0.0)))
+
+    period_ret = ((latest_eq - first_eq) / first_eq * 100.0) if first_eq > 0 else 0.0
+
+    kpis_dict = {
+        "netAssetValue": round(latest_eq, 2),
+        "cashBalance": _clean_float(summary.get("cashBalance", 0.0)),
+        "marginLoan": round(latest_loan, 2),
+        "dayPnL": round(chart4_data[-1]["dailyPnL"] if chart4_data else 0.0, 2),
+        "realizedPnL": round(latest_rpnl, 2),
+        "realizedPnLPct": round((latest_rpnl / latest_cap * 100.0) if latest_cap > 0 else 0.0, 2),
+        "unrealizedPnL": round(latest_upnl, 2),
+        "unrealizedPnLPct": round((latest_upnl / latest_cap * 100.0) if latest_cap > 0 else 0.0, 2),
+        "totalPnL": round(latest_tot_pnl, 2),
+        "totalPnLPct": round((latest_tot_pnl / latest_cap * 100.0) if latest_cap > 0 else 0.0, 2),
+        "capital": round(latest_cap, 2),
+        "capitalPct": round((latest_cap / latest_eq * 100.0) if latest_eq > 0 else 0.0, 2),
+        "margin": round(latest_loan, 2),
+        "marginPct": round((latest_loan / latest_cap * 100.0) if latest_cap > 0 else 0.0, 2),
+        "totalPortfolio": round(latest_eq, 2),
+        "totalPortfolioPct": round(period_ret, 2),
+        "pctReturn": round(_clean_float(summary.get("pctReturn", period_ret)), 2),
+        "currency": target_currency,
+    }
+
     return {
-        "kpis": {
-            "netAssetValue": _clean_float(summary.get("totalEquity", 0.0)),
-            "cashBalance": _clean_float(summary.get("cashBalance", 0.0)),
-            "marginLoan": _clean_float(summary.get("marginLoan", 0.0)),
-            "dayPnL": _clean_float(chart4_data[-1]["dailyPnL"] if chart4_data else 0.0),
-            "realizedPnL": _clean_float(summary.get("realizedPnL", 0.0)),
-            "unrealizedPnL": _clean_float(summary.get("unrealizedPnL", 0.0)),
-            "pctReturn": _clean_float(summary.get("pctReturn", 0.0)),
-            "currency": currency,
+        "parameters": {
+            "currency": target_currency,
+            "selectedDate": perf_series[-1]["date"] if perf_series else date.today().isoformat(),
+            "timeframe": timeframe,
+        },
+        "kpis": kpis_dict,
+        "chart1_portfolio_capital_margin": chart1_pcm,
+        "chart2_pnl_breakdown": {
+            "portfolio": chart2_port,
+            "stocks": stock_breakdown,
         },
         "chart1_equity_vs_benchmark": chart1_data,
         "chart2_cumulative_pnl": chart2_data,
