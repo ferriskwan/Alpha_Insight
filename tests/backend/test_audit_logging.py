@@ -66,6 +66,7 @@ class TestAuditLoggingRepository:
         assert entry.id is not None
         assert entry.user_id is None
         assert entry.action == "BATCH_PIPELINE_COMPLETE"
+        assert entry.new_values is not None
         assert entry.new_values["records_processed"] == 500
 
     def test_get_audit_logs_filters_by_entity_and_action(

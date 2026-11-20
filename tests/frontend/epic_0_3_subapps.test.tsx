@@ -48,7 +48,7 @@ describe('Epic 0.3 Frontend Sub-Applications Unit & Interaction Tests', () => {
     render(<PortfolioOverview />);
 
     // Check title and KPI cards
-    expect(await screen.findByText('Institutional Portfolio Overview')).toBeInTheDocument();
+    expect(await screen.findByText('Portfolio Overview')).toBeInTheDocument();
     expect(screen.getByText('Net Asset Value')).toBeInTheDocument();
     expect(screen.getByText('Cash Available')).toBeInTheDocument();
     expect(screen.getByText('Portfolio Equity Curve vs SPY Benchmark')).toBeInTheDocument();

@@ -328,9 +328,58 @@ export interface PortfolioOverviewKPIs {
   marginLoan: number;
   dayPnL: number;
   realizedPnL: number;
+  realizedPnLPct?: number;
   unrealizedPnL: number;
+  unrealizedPnLPct?: number;
+  totalPnL?: number;
+  totalPnLPct?: number;
+  capital?: number;
+  capitalPct?: number;
+  margin?: number;
+  marginPct?: number;
+  totalPortfolio?: number;
+  totalPortfolioPct?: number;
   pctReturn: number;
   currency: string;
+}
+
+export interface PortfolioCapitalMarginPoint {
+  date: string;
+  portfolioSize: number;
+  portfolioSizePct: number;
+  capital: number;
+  capitalPct: number;
+  margin: number;
+  marginPct: number;
+}
+
+export interface PortfolioStockPnLPoint {
+  date: string;
+  pnl: number;
+  pnlPct: number;
+}
+
+export interface PortfolioChart2Data {
+  portfolio: PortfolioStockPnLPoint[];
+  stocks: Record<string, PortfolioStockPnLPoint[]>;
+}
+
+export interface PortfolioOverviewParameters {
+  currency: string;
+  selectedDate: string;
+  timeframe: string;
+}
+
+export interface PortfolioCommentaryItem {
+  title: string;
+  status: string;
+  content: string;
+}
+
+export interface PortfolioCommentaryResponse {
+  cached: boolean;
+  lastUpdated: string;
+  commentaries: Record<string, PortfolioCommentaryItem>;
 }
 
 export interface Chart1EquityVsBenchmark {
@@ -363,7 +412,10 @@ export interface Chart4DailyPnLDrawdown {
 }
 
 export interface PortfolioOverviewResponse {
+  parameters?: PortfolioOverviewParameters;
   kpis: PortfolioOverviewKPIs;
+  chart1_portfolio_capital_margin?: PortfolioCapitalMarginPoint[];
+  chart2_pnl_breakdown?: PortfolioChart2Data;
   chart1_equity_vs_benchmark: Chart1EquityVsBenchmark[];
   chart2_cumulative_pnl: Chart2CumulativePnL[];
   chart3_asset_allocation: Chart3AssetAllocation[];

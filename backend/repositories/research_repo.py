@@ -288,39 +288,21 @@ def get_intraday_microstructure_data(
     tick_rows.reverse()
 
     candles_5m: list[dict[str, Any]] = []
-    if not tick_rows:
-        base_px = latest_price if latest_price > 0 else 180.0
-        for i in range(40):
-            hh = 9 + ((30 + i * 5) // 60)
-            mm = (30 + i * 5) % 60
-            ts_str = f"2026-11-17T{hh:02d}:{mm:02d}:00"
-            px = base_px + (i * 0.05) + (math.sin(i * 0.4) * 0.4)
-            candles_5m.append(
-                {
-                    "date": ts_str,
-                    "open": round(px - 0.1, 2),
-                    "high": round(px + 0.2, 2),
-                    "low": round(px - 0.15, 2),
-                    "close": round(px + 0.05, 2),
-                    "volume": 35000 + (i * 500),
-                }
-            )
-    else:
-        for tr in tick_rows:
-            c_val = _clean_float(tr.close, latest_price)
-            o_val = _clean_float(tr.open, c_val)
-            h_val = _clean_float(tr.high, max(o_val, c_val))
-            l_val = _clean_float(tr.low, min(o_val, c_val))
-            candles_5m.append(
-                {
-                    "date": tr.timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "open": o_val,
-                    "high": h_val,
-                    "low": l_val,
-                    "close": c_val,
-                    "volume": _clean_float(tr.volume, 10000.0),
-                }
-            )
+    for tr in tick_rows:
+        c_val = _clean_float(tr.close, latest_price)
+        o_val = _clean_float(tr.open, c_val)
+        h_val = _clean_float(tr.high, max(o_val, c_val))
+        l_val = _clean_float(tr.low, min(o_val, c_val))
+        candles_5m.append(
+            {
+                "date": tr.timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
+                "open": o_val,
+                "high": h_val,
+                "low": l_val,
+                "close": c_val,
+                "volume": _clean_float(tr.volume, 10000.0),
+            }
+        )
 
     highs = [float(c["high"]) for c in candles_5m]
     lows = [float(c["low"]) for c in candles_5m]
@@ -344,7 +326,7 @@ def get_intraday_microstructure_data(
 
     return {
         "atr_14_5m": round(float(atr_5m_val), 2),
-        "session_vwap": vwap_data.get("session_vwap"),
+        "session_vwap": vwap_data.get("session_vwap") or (round(latest_price, 2) if latest_price > 0 else None),
         "vwap_deviation_pct": vwap_data.get("vwap_deviation_pct"),
         "execution_friction": friction_data,
         "volatility_regime": regime,
@@ -399,45 +381,27 @@ def get_stock_analyst_data(
         tick_rows = [r for r in db.scalars(tick_stmt).all() if _clean_float(r.close, 0.0) > 0.0]
         tick_rows.reverse()
 
-        if not tick_rows:
-            base_px = 180.0
-            for i in range(60):
-                hh = 9 + ((30 + i * 5) // 60)
-                mm = (30 + i * 5) % 60
-                ts_str = f"2026-11-17T{hh:02d}:{mm:02d}:00"
-                px = base_px + (i * 0.12) + (math.sin(i * 0.4) * 0.8)
-                candles.append(
-                    {
-                        "date": ts_str,
-                        "open": round(px - 0.15, 2),
-                        "high": round(px + 0.35, 2),
-                        "low": round(px - 0.25, 2),
-                        "close": round(px + 0.1, 2),
-                        "volume": 45000 + (i * 800),
-                    }
-                )
-        else:
-            for tr in tick_rows:
-                c_val = _clean_float(tr.close, 0.0)
-                o_val = _clean_float(tr.open, c_val)
-                h_val = _clean_float(tr.high, max(o_val, c_val))
-                l_val = _clean_float(tr.low, min(o_val, c_val))
-                if o_val <= 0.0:
-                    o_val = c_val
-                if h_val <= 0.0:
-                    h_val = max(o_val, c_val)
-                if l_val <= 0.0:
-                    l_val = min(o_val, c_val)
-                candles.append(
-                    {
-                        "date": tr.timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
-                        "open": o_val,
-                        "high": h_val,
-                        "low": l_val,
-                        "close": c_val,
-                        "volume": _clean_float(tr.volume, 0.0),
-                    }
-                )
+        for tr in tick_rows:
+            c_val = _clean_float(tr.close, 0.0)
+            o_val = _clean_float(tr.open, c_val)
+            h_val = _clean_float(tr.high, max(o_val, c_val))
+            l_val = _clean_float(tr.low, min(o_val, c_val))
+            if o_val <= 0.0:
+                o_val = c_val
+            if h_val <= 0.0:
+                h_val = max(o_val, c_val)
+            if l_val <= 0.0:
+                l_val = min(o_val, c_val)
+            candles.append(
+                {
+                    "date": tr.timestamp.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "open": o_val,
+                    "high": h_val,
+                    "low": l_val,
+                    "close": c_val,
+                    "volume": _clean_float(tr.volume, 0.0),
+                }
+            )
     else:
         stmt = select(EodData).where(EodData.symbol == clean_sym).order_by(EodData.date)
         if start_date:
@@ -447,43 +411,27 @@ def get_stock_analyst_data(
 
         rows = [r for r in db.scalars(stmt).all() if _clean_float(r.close, 0.0) > 0.0]
 
-        if not rows:
-            dates = [f"2026-03-{i:02d}" for i in range(1, 31)]
-            base_px = 180.0
-            for i, d in enumerate(dates):
-                px = base_px + (i * 0.45) + (math.sin(i * 0.5) * 3.5)
-                candles.append(
-                    {
-                        "date": d,
-                        "open": round(px - 0.8, 2),
-                        "high": round(px + 1.6, 2),
-                        "low": round(px - 1.2, 2),
-                        "close": round(px + 0.3, 2),
-                        "volume": 2400000 + (i * 12000),
-                    }
-                )
-        else:
-            for r in rows:
-                c_val = _clean_float(r.close, 0.0)
-                o_val = _clean_float(r.open, c_val)
-                h_val = _clean_float(r.high, max(o_val, c_val))
-                l_val = _clean_float(r.low, min(o_val, c_val))
-                if o_val <= 0.0:
-                    o_val = c_val
-                if h_val <= 0.0:
-                    h_val = max(o_val, c_val)
-                if l_val <= 0.0:
-                    l_val = min(o_val, c_val)
-                candles.append(
-                    {
-                        "date": r.date.isoformat(),
-                        "open": o_val,
-                        "high": h_val,
-                        "low": l_val,
-                        "close": c_val,
-                        "volume": _clean_float(r.volume, 0.0),
-                    }
-                )
+        for r in rows:
+            c_val = _clean_float(r.close, 0.0)
+            o_val = _clean_float(r.open, c_val)
+            h_val = _clean_float(r.high, max(o_val, c_val))
+            l_val = _clean_float(r.low, min(o_val, c_val))
+            if o_val <= 0.0:
+                o_val = c_val
+            if h_val <= 0.0:
+                h_val = max(o_val, c_val)
+            if l_val <= 0.0:
+                l_val = min(o_val, c_val)
+            candles.append(
+                {
+                    "date": r.date.isoformat(),
+                    "open": o_val,
+                    "high": h_val,
+                    "low": l_val,
+                    "close": c_val,
+                    "volume": _clean_float(r.volume, 0.0),
+                }
+            )
 
     closes: list[float] = [float(c["close"]) for c in candles]
     highs: list[float] = [float(c["high"]) for c in candles]

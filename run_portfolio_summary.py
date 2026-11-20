@@ -7,6 +7,7 @@ Sequentially executed in main.py after run_daily_margin_interest.py.
 from __future__ import annotations
 
 import logging
+import math
 import os
 import sys
 from datetime import date, timedelta
@@ -123,8 +124,10 @@ def run_portfolio_summary() -> None:
                         GROUP BY symbol
                     )
                     SELECT w.currency, p.investment,
-                           COALESCE(SUM(p.quantity * p.eodprice), 0),
-                           COALESCE(SUM(p.quantity * (p.eodprice - p.avgprice)), 0)
+                           COALESCE(SUM(CASE WHEN p.eodprice::text != 'NaN'
+                                             THEN p.quantity * p.eodprice ELSE 0 END), 0),
+                           COALESCE(SUM(CASE WHEN p.eodprice::text != 'NaN' AND p.avgprice::text != 'NaN'
+                                             THEN p.quantity * (p.eodprice - p.avgprice) ELSE 0 END), 0)
                     FROM public.position p
                     JOIN latest_pos lp ON p.symbol = lp.symbol AND p.tradedate = lp.max_date
                     LEFT JOIN public.watchlist w ON p.symbol = w.symbol
@@ -135,8 +138,10 @@ def run_portfolio_summary() -> None:
                 )
                 for p_curr, p_inv, pmv, upnl in cursor.fetchall():
                     b = get_bucket(p_curr, bool(p_inv))
-                    b["position_market_value"] += float(pmv)
-                    b["unrealized_pnl"] += float(upnl)
+                    pmv_clean = float(pmv) if pmv is not None and str(pmv).lower() != "nan" else 0.0
+                    upnl_clean = float(upnl) if upnl is not None and str(upnl).lower() != "nan" else 0.0
+                    b["position_market_value"] += pmv_clean
+                    b["unrealized_pnl"] += upnl_clean
 
                 # 3. Realized PnL from closed positions up to date d
                 cursor.execute(
@@ -201,9 +206,21 @@ def run_portfolio_summary() -> None:
 
                 # Insert all daily portfolio summary records for this user and date
                 for (curr, inv), b in summary_rows.items():
+                    # Clean any NaN in buckets
+                    for k in b:
+                        if math.isnan(b[k]):
+                            b[k] = 0.0
+
                     total_asset_value = b["total_capital"] + b["position_market_value"] + b["realized_pnl"]
                     total_pnl = b["realized_pnl"] + b["unrealized_pnl"] - b["cumulative_interest_accrued"]
                     pct_pnl = (total_pnl / b["total_capital"] * 100.0) if b["total_capital"] > 0 else 0.0
+
+                    if math.isnan(total_asset_value):
+                        total_asset_value = b["total_capital"]
+                    if math.isnan(total_pnl):
+                        total_pnl = 0.0
+                    if math.isnan(pct_pnl):
+                        pct_pnl = 0.0
 
                     cursor.execute(
                         """

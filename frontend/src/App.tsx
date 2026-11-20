@@ -50,9 +50,9 @@ export const App: React.FC = () => {
   });
   const [selectedSymbol, setSelectedSymbol] = useState<string>(() => {
     try {
-      return localStorage.getItem('alpha_insight_selected_symbol') || 'AAPL';
+      return localStorage.getItem('alpha_insight_selected_symbol') || '';
     } catch {
-      return 'AAPL';
+      return '';
     }
   });
   const [splitMode, setSplitMode] = useState<SplitLayoutMode>(() => {
@@ -69,10 +69,10 @@ export const App: React.FC = () => {
   const [activePane, setActivePane] = useState<PaneId>('left');
   const [pendingLinkedOutput, setPendingLinkedOutput] = useState<AgentAnalystOutputDTO | null>(null);
   const [displayedContext, setDisplayedContext] = useState<DisplayedScreenContext>({
-    symbol: 'AAPL',
+    symbol: '',
     activeRoute: '/portfolio/overview',
     routeTitle: 'Portfolio Overview',
-    contextPills: ['Active Context: AAPL', 'Portfolio Overview'],
+    contextPills: ['Portfolio Overview'],
     data: {},
   });
 

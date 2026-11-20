@@ -18,9 +18,10 @@ export interface StockAnalystViewProps {
 }
 
 export const StockAnalystView: React.FC<StockAnalystViewProps> = ({
-  initialSymbol = 'AAPL',
+  initialSymbol = '',
 }) => {
   const [symbol, setSymbol] = useState<string>(initialSymbol);
+  const [availableSymbols, setAvailableSymbols] = useState<string[]>([]);
   const [timeframe, setTimeframe] = useState<string>('1Y');
   const [viewMode, setViewMode] = useState<'interactive' | 'matplotlib'>('interactive');
   const [data, setData] = useState<StockAnalystResponse | null>(null);
@@ -38,6 +39,24 @@ export const StockAnalystView: React.FC<StockAnalystViewProps> = ({
   const [emaPeriod, setEmaPeriod] = useState<number>(50);
   const [bbPeriod, setBbPeriod] = useState<number>(20);
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    let mounted = true;
+    apiClient
+      .getWatchlistItems('All')
+      .then((items) => {
+        if (!mounted) return;
+        const syms = Array.from(new Set(items.map((i) => i.symbol))).filter(Boolean);
+        setAvailableSymbols(syms);
+        if (syms.length > 0 && (!symbol || !syms.includes(symbol))) {
+          setSymbol(syms[0]);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -98,20 +117,22 @@ export const StockAnalystView: React.FC<StockAnalystViewProps> = ({
         {/* Workstation Controls: 2-Way Viewport Mode Toggle + Indicator Drawer Trigger */}
         <div className="flex flex-wrap items-center gap-3">
           {/* Symbol Quick Switcher */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded border border-slate-300 text-xs">
-            {['AAPL', 'MSFT', 'NVDA', 'SPY', 'TSLA'].map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSymbol(s)}
-                className={`px-2.5 py-1 rounded font-mono font-semibold transition-colors cursor-pointer ${
-                  symbol === s ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+          {availableSymbols.length > 0 && (
+            <div className="flex items-center bg-slate-100 p-0.5 rounded border border-slate-300 text-xs">
+              {availableSymbols.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSymbol(s)}
+                  className={`px-2.5 py-1 rounded font-mono font-semibold transition-colors cursor-pointer ${
+                    symbol === s ? 'bg-white text-blue-700 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* 2-Way View Toggle: [Matplotlib (charting.py) | Interactive Canvas] */}
           <div className="flex items-center bg-slate-100 p-0.5 rounded border border-slate-300 text-xs font-semibold">

@@ -122,7 +122,13 @@ def seed_test_data(db_session: Session) -> dict[str, Any]:
         datevalue=date(2026, 3, 31),
         description="Global batch today date",
     )
-    db_session.add_all([sys_startdate, sys_today])
+    sys_def_ccy = SysValue(
+        name="DEFAULT_CURRENCY",
+        type="STRING",
+        strvalue="SGD",
+        description="Default portfolio reporting currency",
+    )
+    db_session.add_all([sys_startdate, sys_today, sys_def_ccy])
 
     # 3. Watchlist
     wl_aapl = Watchlist(

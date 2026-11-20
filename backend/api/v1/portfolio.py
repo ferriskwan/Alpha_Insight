@@ -22,42 +22,88 @@ from backend.repositories.portfolio_repo import (
 )
 from backend.repositories.ref_data_repo import DEFAULT_CHART_PARAMETERS, get_chart_settings
 from backend.schemas.auth import UserProfileResponse
-from backend.schemas.portfolio import PortfolioDashboardResponse
+from backend.schemas.portfolio import (
+    PortfolioCommentaryResponse,
+    PortfolioDashboardResponse,
+    PortfolioOverviewResponse,
+)
 from backend.schemas.ref_data import ChartSettingsDTO
+from backend.services.agent_orchestrator import generate_portfolio_overview_commentary
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.get("/overview")
+@router.get("/overview", response_model=PortfolioOverviewResponse)
 def get_portfolio_overview(
-    currency: str = Query(default="USD"),
+    currency: Optional[str] = Query(default=None),
+    timeframe: str = Query(default="12M"),
     start_date: Optional[str] = Query(default=None, alias="startDate"),
     end_date: Optional[str] = Query(default=None, alias="endDate"),
+    date_param: Optional[str] = Query(default=None, alias="date"),
     user: Optional[UserProfileResponse] = Depends(get_current_user_optional),
     db: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Return synchronized 4-chart analytical overview data
-    (Equity vs Benchmark, Cumulative PnL, Allocation, Drawdown).
+    """Return synchronized institutional analytical overview data
+    (KPI Badges, Chart 1 Portfolio/Capital/Margin, Chart 2 Total & Stock PnL).
     """
     uid = user.id if user else 1
+    effective_end = date_param or end_date
     data = get_portfolio_4chart_overview(
         db,
         user_id=uid,
         start_date=start_date,
-        end_date=end_date,
+        end_date=effective_end,
         currency=currency,
+        timeframe=timeframe,
     )
-    if not data.get("chart1_equity_vs_benchmark") and uid != 1:
+    if not data.get("chart1_portfolio_capital_margin") and uid != 1:
         data = get_portfolio_4chart_overview(
             db,
             user_id=1,
             start_date=start_date,
-            end_date=end_date,
+            end_date=effective_end,
             currency=currency,
+            timeframe=timeframe,
         )
     return data
+
+
+@router.get("/overview/commentary", response_model=PortfolioCommentaryResponse)
+def get_portfolio_commentary(
+    currency: Optional[str] = Query(default=None),
+    date_param: Optional[str] = Query(default=None, alias="date"),
+    user: Optional[UserProfileResponse] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Retrieve 4-quadrant AI portfolio intelligence commentary."""
+    uid = user.id if user else 1
+    return generate_portfolio_overview_commentary(
+        db=db,
+        user_id=uid,
+        currency=currency,
+        as_of_date=date_param,
+        force_refresh=False,
+    )
+
+
+@router.post("/overview/commentary/refresh", response_model=PortfolioCommentaryResponse)
+def refresh_portfolio_commentary(
+    currency: Optional[str] = Query(default=None),
+    date_param: Optional[str] = Query(default=None, alias="date"),
+    user: Optional[UserProfileResponse] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Force re-synthesis of 4-quadrant AI portfolio intelligence commentary."""
+    uid = user.id if user else 1
+    return generate_portfolio_overview_commentary(
+        db=db,
+        user_id=uid,
+        currency=currency,
+        as_of_date=date_param,
+        force_refresh=True,
+    )
 
 
 @router.get("/dashboard", response_model=PortfolioDashboardResponse)
