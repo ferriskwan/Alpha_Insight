@@ -76,7 +76,7 @@ describe('Epic 0.3 Frontend Sub-Applications Unit & Interaction Tests', () => {
     render(<TransactionsView />);
 
     expect(await screen.findByRole('heading', { level: 1, name: /Transactions/i })).toBeInTheDocument();
-    expect(screen.getByText('NVDA')).toBeInTheDocument();
+    expect(await screen.findByText('NVDA')).toBeInTheDocument();
     expect(screen.getByText('BUY')).toBeInTheDocument();
 
     // Open Modal
