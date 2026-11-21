@@ -7,6 +7,12 @@ from typing import Any, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.schemas.transactions import (
+    MAX_SYSVALUE_DESC_LEN,
+    MAX_SYSVALUE_STRVALUE_LEN,
+    MAX_SYSVALUE_TYPE_LEN,
+)
+
 
 class SysValueDTO(BaseModel):
     """Data transfer object for system key-value configuration."""
@@ -25,11 +31,11 @@ class SysValueDTO(BaseModel):
 class SysValueUpdate(BaseModel):
     """Payload for updating a system configuration value."""
 
-    type: Optional[str] = None
-    strvalue: Optional[str] = None
+    type: Optional[str] = Field(default=None, max_length=MAX_SYSVALUE_TYPE_LEN)
+    strvalue: Optional[str] = Field(default=None, max_length=MAX_SYSVALUE_STRVALUE_LEN)
     numvalue: Optional[float] = None
     datevalue: Optional[str] = None
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, max_length=MAX_SYSVALUE_DESC_LEN)
 
 
 class MovingAveragesParams(BaseModel):

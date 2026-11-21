@@ -1,80 +1,85 @@
-# Tasklist — Epic 0.4: Autonomous Analyst Committee, Historical Agent Output Storage & Investment Notes
+# Task List — Epic 0.6: Portfolio Overview Upgrade & Stock Analyst Bug-Fix
 
-**Project**: Alpha_Insight  
-**Epic**: 0.4 — Autonomous Analyst Committee, Historical Agent Output Storage & Investment Notes  
-**Execution Mode**: **`[1] Single-Engineering Thread Mode (Default)`**  
-**Target Database**: `gen-lang-client-0632004807:asia-southeast1:clover` (`4leafclover_dev`)  
-**Implementation Plan**: `Epics/0.4/implementation_plan.md`  
-
----
-
-## Phase 1: Database Schema & Migration (`backend/db/models.py` & Alembic `0005`)
-- [x] Task 1.1: Add SQLAlchemy 2.0 models `AgentCommitteeRun`, `AgentAnalystOutput`, `InvestmentNote`, and `InvestmentNoteAnalystLink` in `backend/db/models.py`.
-  - *Completed: Added all 4 models with foreign keys, JSON columns, and indexes.*
-- [x] Task 1.2: Author and apply Alembic migration `alembic/versions/0005_agent_outputs_and_investment_notes.py` (including seeding `research.committee` into `public.site_map`).
-  - *Completed: Synchronized `site_map_id_seq`, seeded `research.committee` (ID 204), and applied migration `0005` cleanly to `4leafclover_dev` and SQLite test harness.*
-
-## Phase 2: Priority 1 (Workstream 2) — Backend 4-Analyst Committee, `gemini-4-argon` Orchestration & Historical Lookup
-- [x] Task 2.1: Update `backend/config.py` to set `gemini_default_model = "gemini-4-argon"` and define `supported_ai_models`.
-  - *Completed: Default model set to `gemini-4-argon`.*
-- [x] Task 2.2: Author Pydantic v2 schemas in `backend/schemas/committee.py` (`CommitteeRunRequest`, `CommitteeRunResponse`, `AgentAnalystOutputResponse`, `AgentContextualChatRequest`, `AgentContextualChatResponse`, `ModelOptionItem`).
-  - *Completed: All request/response models defined.*
-- [x] Task 2.3: Expand `backend/services/prompt_builder.py` referencing `C:\Users\ferri\OneDrive\Documents\AlphaInsight\src\lib\promptBuilder.ts` into segregated builders (`build_technical_analyst_prompt`, `build_fundamental_analyst_prompt`, `build_macro_strategist_prompt`, `build_risk_manager_prompt`, `build_executive_summary_prompt`, `build_contextual_chat_prompt`).
-  - *Completed: Segregated specialist prompts and historical ledger formatter implemented.*
-- [x] Task 2.4: Update `backend/services/agent_orchestrator.py` with `gemini-4-argon` SSL-resilient client, concurrent 4-analyst execution (`asyncio.gather`), Executive Summary consolidation, and contextual Q&A chat handler.
-  - *Completed: Concurrent `asyncio.gather` execution and Executive Summary synthesis implemented.*
-- [x] Task 2.5: Implement `backend/repositories/committee_repo.py` and `backend/api/v1/committee.py` (`/run`, `/runs`, `/runs/{run_id}`, `/outputs`, `/models`, `/chat`) and mount in `backend/main.py`.
-  - *Completed: Mounted under `/api/committee` and `/api/v1/committee`.*
-
-## Phase 3: Priority 2 (Workstream 1) — Backend Investment Notes & `0..N` Relational Entity Linking
-- [x] Task 3.1: Author Pydantic v2 schemas in `backend/schemas/notes.py` (`InvestmentNoteCreate`, `InvestmentNoteUpdate`, `InvestmentNoteResponse`, `LinkedAnalystOutputSummary`).
-  - *Completed: Schemas authored and validated.*
-- [x] Task 3.2: Implement `backend/repositories/notes_repo.py` enforcing Watchlist ticker validation (`public.watchlist`), optional trade linking (`public.trade`), and `0..N` `agent_analyst_outputs` linking via `investment_note_analyst_links`.
-  - *Completed: Watchlist validation and `0..N` link reconciliation implemented.*
-- [x] Task 3.3: Implement `backend/api/v1/notes.py` (`GET /`, `POST /`, `PUT /{note_id}`, `DELETE /{note_id}`) with audit logging and mount in `backend/main.py`.
-  - *Completed: Mounted under `/api/notes` and `/api/v1/notes`.*
-
-## Phase 4: Frontend Design System, Autonomous Analyst Committee (`/research/committee`), Floating Contextual Chat & Investment Notes (`/notes`)
-- [x] Task 4.1: Create reusable `FloatingAgentChat.tsx` in `frontend/src/design-system/components/FloatingAgentChat.tsx` and export in `frontend/src/design-system/index.ts` (zero hardcoding).
-  - *Completed: Exported from design-system with live screen context pills and multi-turn Q&A.*
-- [x] Task 4.2: Update `frontend/src/types/api.ts` and `frontend/src/services/apiClient.ts` with Committee, Contextual Chat, and Investment Notes contracts.
-  - *Completed: Added DTOs and REST client methods.*
-- [x] Task 4.3: Update `frontend/src/components/analyst/InteractiveCanvasChart.tsx` to use white-paper `DESIGN_TOKENS.chartHighContrast` tokens and implement `frontend/src/components/research/AnalystCommitteeView.tsx` (`/research/committee`).
-  - *Completed: Built `AnalystCommitteeView.tsx` with `InteractiveCanvasChart`, Executive Summary, 4 segregated analyst cards, and Historical Output Ledger.*
-- [x] Task 4.4: Implement `frontend/src/components/notes/InvestmentNotesView.tsx` (`/notes`) with Watchlist symbol selector, Trade link selector, Markdown/formula viewer, and `0..N` Analyst Output attachment modal.
-  - *Completed: Built `InvestmentNotesView.tsx` with `ModalDialog` 0..N output picker and inspector.*
-- [x] Task 4.5: Wire `/research/committee`, `/notes`, `"Reference in Note"` deep-linking, and live `displayedContext` into `AppShell.tsx` and `App.tsx`.
-  - *Completed: Wired routes, deep-links, and context propagation.*
-
-## Phase 5: Verification, Full CI-Parity Gate & Walkthrough Audit
-- [x] Task 5.1: Author and run backend test suite `tests/backend/test_committee_and_notes.py`.
-  - *Completed: 5/5 backend tests passed (`test_committee_and_notes.py`).*
-- [x] Task 5.2: Author and run frontend test suite `tests/frontend/epic_0_4_committee_and_notes.test.tsx`.
-  - *Completed: 3/3 frontend tests passed (`epic_0_4_committee_and_notes.test.tsx`).*
-- [x] Task 5.3: Execute Full 3-Tier CI-Parity Gate (`uv run ruff check .`, `uv run ruff format --check .`, `uv run mypy backend`, `npx.cmd tsc --noEmit`, `uv run pytest`, `npx.cmd vitest run`).
-  - *Completed: Consecutive exit codes `0` across all 3 tiers (81 backend tests passed, 79 frontend tests passed across 13 suites).*
-- [x] Task 5.4: Perform `spec-orchestrator` and `ui-ux-designer` audits and generate `Epics/0.4/WALKTHROUGH.md` and `walkthrough.md`.
-  - *Completed: All PRD requirements and UI design specifications verified with 0 missing items.*
-
-## Phase 6: JSONB `ref_chart_settings` Extensible Storage & Timeline Run Navigation (Rollup Enhancements)
-- [x] Task 6.1: Author and apply Alembic migration `0008_ref_chart_settings_jsonb.py` on PostgreSQL `4leafclover_dev` and SQLite test harness (convert flat parameters to JSONB, deduplicate duplicate baseline row `id=2`, drop obsolete columns, add 4 partial unique indexes).
-  - *Completed: Migration 0008 applied cleanly with exit code 0; single baseline row `id=1` preserved.*
-- [x] Task 6.2: Update SQLAlchemy model `RefChartSettings` and Pydantic schemas in `backend/schemas/ref_data.py` with backward-compatible property accessors.
-  - *Completed: Property getters/setters ensure 100% backward compatibility for legacy callers.*
-- [x] Task 6.3: Implement 4-tier inheritance cascade (`user+symbol` -> `user` -> `symbol` -> `global baseline`) in `backend/repositories/ref_data_repo.py`.
-  - *Completed: Cascade resolution with deep merging and safe JSON mutation tracking.*
-- [x] Task 6.4: Author `TimelineRunNavigator.tsx` adhering strictly to design system tokens and export from `frontend/src/design-system/index.ts`.
-  - *Completed: Features `<` / `>` stepping, formatted timestamp trigger, run index badge (`Run #1 of N`), calendar month grid, and run picker popover.*
-- [x] Task 6.5: Integrate `TimelineRunNavigator` into `AnalystOutputPanel.tsx` in the specialist tab row header (area circled red).
-  - *Completed: Positioned in `flex items-center justify-between` header row adjacent to specialist tabs.*
-- [x] Task 6.6: Wire timeline run navigation state and fetching into `AnalystCommitteeView.tsx`.
-  - *Completed: Stores committee runs in state, auto-fetches run detail on step or calendar selection.*
-- [x] Task 6.7: Author unit tests in `tests/frontend/epic_0_4_committee_and_notes.test.tsx` and run full CI-Parity verification.
-  - *Completed: 5/5 tests in committee suite passed, 10/10 design system audit tests passed, 17/17 backend tests passed, 0 ruff errors, 0 mypy issues, `tsc --noEmit && vite build` built successfully.*
-- [x] Task 6.8: Clean up legacy ATR 14 and VWAP artifacts across prompts, fallback generators, and UI subtitles.
-  - *Completed: Removed phantom 5m ATR and VWAP instructions from `prompt_builder.py`, cleaned fallback mock analysis in `agent_orchestrator.py`, and updated the Technical tab subtitle in `AnalystCommitteeView.tsx`.*
-- [x] Task 6.9: Implement Option A Microstructure Engine & Deploy Guardrailed Technical Analyst Prompt.
-  - *Completed: Added deterministic `_calculate_atr` (Wilder smoothing), `_calculate_session_vwap`, and `_synthesize_execution_friction` in `research_repo.py`. Injected `intraday_microstructure` payload in `committee_repo.py`. Deployed approved Technical Analyst prompt with Guardrails 1-4, Timeframe Hierarchy, and Strict Pattern Discipline in `prompt_builder.py`.*
-
-
-
+- [x] Task 1: Author Alembic Migration 0009 for Default Currency in SysValue <!-- id: 1 -->
+  - Implementation:
+    - Created idempotent migration `alembic/versions/0009_seed_default_currency_sysvalue.py` inserting `('DEFAULT_CURRENCY', 'SGD')` into `public.sysvalue`.
+    - Added `get_default_currency(db)` in `backend/repositories/ref_data_repo.py`.
+  - Verification: `uv run alembic upgrade head` succeeded (exit code 0). Verified `('DEFAULT_CURRENCY', 'SGD')` in database.
+- [x] Task 2: Patch Batch Pipeline against NaN Propagation <!-- id: 2 -->
+  - Implementation:
+    - Updated `run_mark_to_market.py` to filter `AND e.close::text != 'NaN' AND e.close > 0`.
+    - Updated `run_portfolio_summary.py` to sanitize `NaN` in `p.eodprice`, position market values, and totals.
+    - Cleaned stale `NaN` rows in `position` and `daily_portfolio_summary` and recomputed entire date range.
+  - Verification: `run_mark_to_market.py` (1262 positions inserted) and `run_portfolio_summary.py` ran cleanly; query confirmed 0 NaN rows.
+- [x] Task 3: Eliminate Synthetic Mock Candles in Research Repo <!-- id: 3 -->
+  - Implementation:
+    - In `backend/repositories/research_repo.py`: Removed all `math.sin` mock generators from `get_stock_intraday_data` and `get_stock_analyst_data`.
+    - Empty list `[]` returned if no tick or EOD data exists for the symbol in the database.
+  - Verification: Inspected `research_repo.py` code paths and verified clean return of empty series.
+- [x] Task 4: Fix Watchlist Synchronization in Stock Analysis Suite <!-- id: 4 -->
+  - Implementation:
+    - Updated `frontend/src/App.tsx` to remove hardcoded `'AAPL'` default and initialize `selectedSymbol` dynamically from first watchlist ticker.
+    - Updated `frontend/src/components/research/AnalystCommitteeView.tsx` to eliminate mock watchlists and default `selectedSymbol` to first available symbol (`wlItems[0].symbol`).
+    - Updated `frontend/src/components/research/StockAnalystView.tsx` to dynamically fetch user watchlist symbols for the quick switcher rather than hardcoded tickers.
+  - Verification: Code paths aligned with real watchlist (`5E2.SI` as first item). Clean blank state shown when symbol has no data.
+- [x] Task 5: Enhance Portfolio Overview Calculations in Backend Repo & API <!-- id: 5 -->
+  - Implementation:
+    - In `backend/repositories/portfolio_repo.py`: Implemented `get_portfolio_4chart_overview` computing all 6 badges (Amount & %), Chart 1 series (1M, 3M, 6M, 12M), and Chart 2 multi-line stock breakdown.
+    - Default currency resolved dynamically from `sysvalue` ('SGD').
+    - In `backend/api/v1/portfolio.py`: Exposed updated `GET /api/v1/portfolio/overview` route accepting `currency`, `timeframe`, `date`.
+  - Verification: Tested database execution via session factory; confirmed currency resolves to 'SGD', 18 KPIs computed, 92 time-series points returned, top 5 stocks identified.
+- [x] Task 6: Implement AI Portfolio Overview Commentary Engine <!-- id: 6 -->
+  - Implementation:
+    - In `backend/services/agent_orchestrator.py`: Implemented `generate_portfolio_overview_commentary` synthesizing 4 quadrants ([Technical], [Fundamental], [Macro], [Risk Mgt]) from portfolio metrics and `agent_analyst_outputs`.
+    - In `backend/api/v1/portfolio.py`: Exposed `GET /api/v1/portfolio/overview/commentary` and `POST /api/v1/portfolio/overview/commentary/refresh` with caching keyed by `(user_id, date, currency)`.
+  - Verification: Tested execution via session factory; verified all 4 quadrants returned cleanly.
+- [x] Task 7: Rewrite Frontend PortfolioOverview Component & Design System Binding <!-- id: 7 -->
+  - Implementation:
+    - In `frontend/src/types/api.ts` & `frontend/src/services/apiClient.ts`: Added TypeScript models (`PortfolioCapitalMarginPoint`, `PortfolioStockPnLPoint`, `PortfolioChart2Data`, `PortfolioCommentaryResponse`) and API client methods (`getPortfolioOverview`, `getPortfolioCommentary`, `refreshPortfolioCommentary`).
+    - In `frontend/src/components/portfolio/PortfolioOverview.tsx`: Complete rewrite adhering to `ui_design.md`:
+      - Top Parameters: Date Picker, Currency pills (SGD default), Amount/$ vs % mode toggle, Refresh button.
+      - 6 Metric Badges with hover rollover tooltips displaying calculation formulas.
+      - Chart 1: Valuation & Capital Structure (Total Size, Capital, Margin) across 1M, 3M, 6M, 12M.
+      - Chart 2: Cumulative PnL Attribution (Total Portfolio + Top stocks) with interactive legend pill toggles.
+      - Synchronized crosshair date tracking.
+      - 4-Quadrant AI Portfolio Intelligence panel with stance pills and bullets.
+  - Verification: `npm.cmd run typecheck` passed (exit code 0). All 13 existing vitest files passed (81/81 tests).
+- [x] Task 8: Comprehensive Unit & Integration Tests <!-- id: 8 -->
+  - Author and run tests:
+    - `tests/backend/test_portfolio_overview.py`: Validates dynamic default currency from `sysvalue`, all 6 KPI badges, Chart 1 (PCM), Chart 2 (Stocks), AI commentary synthesis & caching, and API endpoints (exit code 0).
+    - `tests/backend/test_research_no_mock.py`: Validates that research repo functions return empty data instead of synthetic mock candles (exit code 0).
+    - `tests/frontend/portfolio_overview.test.tsx`: Validates 6 KPI badges with rollover formula tooltips, amount/% mode toggles, and stock pills (exit code 0).
+    - `tests/frontend/analyst_committee_sync.test.tsx`: Validates dynamic watchlist initialization (`5E2.SI`) and synchronization with canvas chart without AAPL hardcoding (exit code 0).
+- [x] Task 9: Full 3-Tier CI-Parity Gate Verification <!-- id: 9 -->
+  - Executed full 3-tier gate:
+    - Tier 1: `uv run ruff check .` and `uv run ruff format --check .` (exit code 0 across 127 files).
+    - Tier 2: `uv run mypy` (exit code 0 across 66 source files).
+    - Tier 3: `uv run pytest` (92/92 passed, exit code 0) and `npm.cmd test` (15/15 test files, 85/85 passed, exit code 0).
+- [x] Task 10: Documentation & Walkthrough <!-- id: 10 -->
+  - Authored `Epics/0.6/WALKTHROUGH.md` mapping requirements to files and test outputs.
+- [x] Task 11: Address UI Review Feedback & Portfolio Inclusivity <!-- id: 11 -->
+  - Implementation:
+    - Item 1: Renamed header to "Portfolio Overview" and removed sub-text paragraphs.
+    - Item 2: Added `<` (Previous Day) and `>` (Next Day) date scrolling buttons flanking the date picker input.
+    - Item 3: Rendered explicit solid Y and X axis lines with tick marks and unit labels on Chart 1 and Chart 2. Added hover tooltips displaying point-in-time metrics across all active series.
+    - Item 4: Clarified SPY Benchmark as a legacy synthetic mockup formula that has been retired in Epic 0.6 in favor of actual portfolio valuation and stock PnL attribution.
+    - Item 5: Resolved missing `GLW` position by changing `get_positions` to query the latest position per symbol on or before the target date, preventing timezone/exchange market differences from dropping US stocks.
+    - Item 6: Card 2 configured as "Capital" with value aggregated directly from the `[capital]` table (`$197,491.09 SGD`).
+  - Verification:
+    - Tier 1: `uv run ruff check .` & `uv run ruff format --check .` (0 errors across 128 files).
+    - Tier 2: `uv run mypy backend tests/backend run_mark_to_market.py run_portfolio_summary.py` (0 errors across 66 source files).
+    - Tier 3: `uv run pytest` (92/92 passed) and `npm.cmd test` (15/15 files, 86/86 passed).
+- [x] Task 12: 4-Chart 2x2 Matrix, Mouse Hover Alignment, Weekend Exclusion & Historical Capital Range <!-- id: 12 -->
+  - Implementation:
+    - Item 1 (Mouse Crosshair Misalignment): Resolved SVG letterboxing by applying `preserveAspectRatio="none"` and using `svg.getScreenCTM().inverse()` to map screen coordinates `(e.clientX, e.clientY)` with exact sub-pixel precision to SVG canvas coordinates.
+    - Item 2 (2x2 Chart Layout): Restructured chart layout from vertical stack into a 2x2 grid (`grid-cols-1 lg:grid-cols-2 gap-4`) within the same real estate:
+      - Top-Left: Chart 1 (Portfolio Size, Capital & Margin Loan)
+      - Top-Right: Chart 2 (Cumulative PnL Attribution & Stock breakdown)
+      - Bottom-Left: Chart 3 (Asset & Currency Exposure Distribution bars: GLW, 5E2.SI, BN4.SI, D05.SI, Cash)
+      - Bottom-Right: Chart 4 (Daily PnL & High-Water Mark Drawdown bars and peak curve)
+    - Item 3 (Weekend Dips to 0): Filtered out all Saturdays and Sundays (`date.weekday() < 5`) from `perf_series` across all charts; forward-filled mid-week trading gaps so individual stock PnLs do not dip to 0.
+    - Item 4 (Capital Step-ups & Historical Data): Increased summary query limit from 365 to 1500 rows to capture the full 375+ calendar days (given 4 currency/account buckets per day), showing all 8 historical capital step-ups from $45k to $197k.
+  - Verification:
+    - Tier 1: `uv run ruff check` & `uv run ruff format --check` passed cleanly on 128 files.
+    - Tier 2: `uv run mypy` passed on 64 source files with 0 errors.
+    - Tier 3: Backend pytest passed 92/92 tests; Frontend vitest passed 86/86 tests across 15 suites.

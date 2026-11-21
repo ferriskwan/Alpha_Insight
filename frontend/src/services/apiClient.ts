@@ -28,6 +28,7 @@ import {
   RefDataSysValue,
   RefDataSysValueUpdate,
   PortfolioOverviewResponse,
+  PortfolioCommentaryResponse,
   WatchlistEnrichedItem,
   StockAnalystResponse,
   MacroeconomicsResponse,
@@ -359,13 +360,41 @@ export const apiClient = {
     currency?: string;
     startDate?: string;
     endDate?: string;
+    date?: string;
+    timeframe?: string;
   }): Promise<PortfolioOverviewResponse> {
     const qs = new URLSearchParams();
     if (params?.currency) qs.set('currency', params.currency);
     if (params?.startDate) qs.set('startDate', params.startDate);
     if (params?.endDate) qs.set('endDate', params.endDate);
+    if (params?.date) qs.set('date', params.date);
+    if (params?.timeframe) qs.set('timeframe', params.timeframe);
     const query = qs.toString() ? `?${qs.toString()}` : '';
     return fetchJson<PortfolioOverviewResponse>(`/api/v1/portfolio/overview${query}`);
+  },
+
+  async getPortfolioCommentary(params?: {
+    currency?: string;
+    date?: string;
+  }): Promise<PortfolioCommentaryResponse> {
+    const qs = new URLSearchParams();
+    if (params?.currency) qs.set('currency', params.currency);
+    if (params?.date) qs.set('date', params.date);
+    const query = qs.toString() ? `?${qs.toString()}` : '';
+    return fetchJson<PortfolioCommentaryResponse>(`/api/v1/portfolio/overview/commentary${query}`);
+  },
+
+  async refreshPortfolioCommentary(params?: {
+    currency?: string;
+    date?: string;
+  }): Promise<PortfolioCommentaryResponse> {
+    const qs = new URLSearchParams();
+    if (params?.currency) qs.set('currency', params.currency);
+    if (params?.date) qs.set('date', params.date);
+    const query = qs.toString() ? `?${qs.toString()}` : '';
+    return fetchJson<PortfolioCommentaryResponse>(`/api/v1/portfolio/overview/commentary/refresh${query}`, {
+      method: 'POST',
+    });
   },
 
   async getWatchlistLists(): Promise<string[]> {

@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -28,13 +28,18 @@ from backend.repositories.watchlist_repo import (
 )
 from backend.schemas.auth import UserProfileResponse
 from backend.schemas.market import WatchlistDataResponse, WatchlistSymbolItem
+from backend.schemas.transactions import (
+    MAX_SECURITY_NAME_LEN,
+    MAX_SYMBOL_LEN,
+    MAX_WATCHLIST_NAME_LEN,
+)
 from backend.services.chart_runner import generate_candlestick_png
 
 
 class WatchlistAddRequest(BaseModel):
-    symbol: str
-    name: Optional[str] = None
-    watchlistname: Optional[str] = "Default"
+    symbol: str = Field(..., min_length=1, max_length=MAX_SYMBOL_LEN)
+    name: Optional[str] = Field(default=None, max_length=MAX_SECURITY_NAME_LEN)
+    watchlistname: Optional[str] = Field(default="Default", max_length=MAX_WATCHLIST_NAME_LEN)
 
 
 logger = logging.getLogger(__name__)

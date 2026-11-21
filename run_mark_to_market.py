@@ -107,6 +107,8 @@ def run_mark_to_market():
             WHERE e.date >= %s
               AND t.tradedate::date <= e.date
               AND e.close IS NOT NULL
+              AND e.close::text != 'NaN'
+              AND e.close > 0
             GROUP BY t.user_id, e.date, t.symbol, t.investment, e.close;
         """
         cursor.execute(insert_query, (start_date,))

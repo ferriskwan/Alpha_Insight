@@ -1,0 +1,44 @@
+# Task List — Epic 0.5: CI/CD Pipeline and Cloud Run Multi-Environment Deployment
+
+- [x] Task 1: Refine `backend/config.py` for Cloud SQL Unix Domain Sockets <!-- id: 1 -->
+  - Implementation:
+    - Updated `resolved_db_host` and `sqlalchemy_database_uri` in `backend/config.py` to handle `/cloudsql/` Unix domain socket paths without port conflicts.
+    - Updated `ProcessData.py` to allow `/cloudsql/` paths containing instance connection name colons.
+    - Added unit test `TestCloudSqlUnixSocketConfig` in `tests/backend/test_api_endpoints.py` validating socket URI generation.
+  - Verification: `uv run pytest tests/backend/test_api_endpoints.py` (18/18 passed), `uv run ruff check .` (0 errors), `uv run ruff format --check .` (clean).
+- [x] Task 2: Author CI Validation Gate Workflow (`.github/workflows/ci-gate.yml`) <!-- id: 2 -->
+  - Implementation: GitHub Actions workflow triggered on PRs to `dev` and `main` running Ruff check/format, Mypy, Vitest, and Pytest.
+  - Files affected: `.github/workflows/ci-gate.yml`
+  - Verification: YAML syntax validation.
+- [x] Task 3: Author Dev Deployment Workflow (`.github/workflows/deploy-dev.yml`) <!-- id: 3 -->
+  - Implementation: Workload Identity Federation OIDC authentication, Cloud SQL Proxy background runner, `uv run alembic upgrade head` migration for `4leafclover_dev`, Docker build/push to Artifact Registry (`asia-southeast1`), Cloud Run deployment for `alpha-insight-web-dev` and `alpha-insight-daily-job-dev`, `/api/health` validation probe.
+  - Files affected: `.github/workflows/deploy-dev.yml`
+  - Verification: YAML schema and action step validation.
+- [x] Task 4: Author Production Deployment Workflow (`.github/workflows/deploy-prod.yml`) <!-- id: 4 -->
+  - Implementation: Triggered on push to `main`, gated by GitHub Environment `production` approval, runs migrations for `4leafclover`, deploys `alpha-insight-web` and `alpha-insight-daily-job`, executes `/api/health` validation probe.
+  - Files affected: `.github/workflows/deploy-prod.yml`
+  - Verification: YAML schema validation.
+- [x] Task 5: Author GCP Infrastructure Automation Scripts <!-- id: 5 -->
+  - Implementation: PowerShell (`scripts/setup_gcp_dev.ps1`) and Bash (`scripts/setup_gcp_dev.sh`) to enable APIs, create Artifact Registry, configure WIF pool/provider, create service account, grant IAM roles, and provision Secret Manager keys.
+  - Files affected: `scripts/setup_gcp_dev.ps1`, `scripts/setup_gcp_dev.sh`
+  - Verification: Syntax checking.
+- [x] Task 6: Author Operator Runbook & Walkthrough Documentation <!-- id: 6 -->
+  - Implementation: `Epics/0.5/GCP_SETUP_GUIDE.md` (exact instructions for setting up GitHub Secrets, Variables, and Branch Protection Rules) and `Epics/0.5/WALKTHROUGH.md`.
+  - Files affected: `Epics/0.5/GCP_SETUP_GUIDE.md`, `Epics/0.5/WALKTHROUGH.md`
+  - Verification: Cross-reference against Success Criteria SC-1 through SC-7.
+- [x] Task 7: Deterministic CI Parity Gate Audit & GitHub Push <!-- id: 7 -->
+  - Implementation: Run full 3-Tier gate (Ruff, Mypy, Vitest, Pytest), commit changes, push to branch `epic-0.5`.
+  - Verification: 0 errors across all linters, typers, and 167 tests (86 backend + 81 frontend).
+- [x] Task 8: Live GCP Provisioning, WIF Configuration & Cloud Run Deployment Verification <!-- id: 8 -->
+  - Implementation:
+    - Executed `scripts/setup_gcp.py` to enable GCP APIs (`run`, `sqladmin`, `artifactregistry`, `secretmanager`, `iamcredentials`, `cloudbuild`), enable `github-actions-deployer` service account, bind IAM roles, and create WIF pool `github-pool`.
+    - Created OIDC provider `github-provider` with security constraint `--attribute-condition="assertion.repository == 'ferriskwan/Alpha_Insight'"`.
+    - Synchronized GitHub repository variables `WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT` via GitHub CLI.
+    - Provisioned Secret Manager secret versions (`alpha-db-password-dev`, `alpha-db-password`, `alpha-gemini-api-key`, `alpha-twelvedata-api-key`, `alpha-google-client-id`, `alpha-api-key-dev`, `alpha-api-key`).
+    - Aligned PostgreSQL table and sequence permissions for database migration execution on `4leafclover_dev`.
+    - Successfully executed GitHub Actions Run 44508867110:
+      - Alembic schema upgrade head completed cleanly against `4leafclover_dev`.
+      - Built & pushed Docker container `alpha-insight-web-dev` and `alpha-insight-daily-job-dev` to `asia-southeast1-docker.pkg.dev/gen-lang-client-0632004807/alpha-insight-repo`.
+      - Deployed Cloud Run Service `alpha-insight-web-dev` (`https://alpha-insight-web-dev-db25tnv5aa-as.a.run.app`).
+      - Deployed Cloud Run Job `alpha-insight-daily-job-dev` (Status: Ready=True).
+      - Health check probe `/api/health` returned HTTP 200 `{"status":"ok","env":"DEV"}`.

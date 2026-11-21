@@ -1,0 +1,48 @@
+# Task List — Epic 0.6: Portfolio Overview Upgrade & Stock Analyst Bug-Fix
+
+- [ ] Task 1: Author Alembic Migration 0009 for Default Currency in SysValue <!-- id: 1 -->
+  - Implementation: Create idempotent migration `alembic/versions/0009_seed_default_currency_sysvalue.py` inserting `('DEFAULT_CURRENCY', 'SGD')` into `public.sysvalue`.
+  - Verification: Run `uv run alembic upgrade head` and verify record exists in database.
+- [ ] Task 2: Patch Batch Pipeline against NaN Propagation <!-- id: 2 -->
+  - Implementation:
+    - In `run_mark_to_market.py`: sanitize `eodprice` using `COALESCE(NULLIF(eodprice, 'NaN'::float), prev_valid_close)`.
+    - In `run_portfolio_summary.py`: filter out `NaN` values before summing position market values and unrealized PnL.
+    - Clean stale `NaN` USD rows in `public.daily_portfolio_summary` and recompute.
+  - Verification: Run batch script and query `SELECT * FROM public.daily_portfolio_summary WHERE total_asset_value != total_asset_value`.
+- [ ] Task 3: Eliminate Synthetic Mock Candles in Research Repo <!-- id: 3 -->
+  - Implementation: In `backend/repositories/research_repo.py`, remove all `math.sin` mock generators (lines 291-307, 402-419, 450-464); return empty array `[]` when no rows exist in database.
+  - Verification: Add unit test in `tests/backend/test_research_no_mock.py` confirming ticker without data returns empty candles without synthetic data.
+- [ ] Task 4: Fix Watchlist Synchronization in Stock Analysis Suite <!-- id: 4 -->
+  - Implementation:
+    - In `frontend/src/App.tsx`: Remove hardcoded `'AAPL'` default; initialize dynamically from first available watchlist ticker.
+    - In `frontend/src/components/research/AnalystCommitteeView.tsx`: Remove fallback mock watchlist; synchronize `selectedSymbol` with `wlItems[0].symbol`.
+    - In `frontend/src/components/research/StockAnalystView.tsx`: Remove hardcoded mock ticker arrays.
+  - Verification: Vitest test verifying dynamic selection and reflective blank state.
+- [ ] Task 5: Enhance Portfolio Overview Calculations in Backend Repo & API <!-- id: 5 -->
+  - Implementation:
+    - In `backend/repositories/portfolio_repo.py`: Implement `get_portfolio_overview` returning KPI badges (Amount & %), Chart 1 series (1M, 3M, 6M, 12M), and Chart 2 multi-line stock breakdown.
+    - Default currency resolved dynamically from `sysvalue`.
+    - In `backend/api/v1/portfolio.py`: Expose updated `/api/v1/portfolio/overview` route.
+  - Verification: Pytest suite validating schema contract and calculations.
+- [ ] Task 6: Implement AI Portfolio Overview Commentary Engine <!-- id: 6 -->
+  - Implementation:
+    - In `backend/services/agent_orchestrator.py`: Implement `generate_portfolio_overview_commentary` synthesizing 4 quadrants ([Technical], [Fundamental], [Macro], [Risk Mgt]) from `agent_analyst_outputs` + portfolio statistics.
+    - In `backend/api/v1/portfolio.py`: Expose `GET /api/v1/portfolio/overview/commentary` and `POST /api/v1/portfolio/overview/commentary/refresh` with caching keyed by `(user_id, date, currency)`.
+  - Verification: Test API responses and cache invalidation.
+- [ ] Task 7: Rewrite Frontend PortfolioOverview Component & Design System Binding <!-- id: 7 -->
+  - Implementation:
+    - In `frontend/src/types/api.ts` & `frontend/src/services/apiClient.ts`: Add TypeScript models and API client methods.
+    - In `frontend/src/components/portfolio/PortfolioOverview.tsx`: Complete rewrite adhering to `ui_design.md`:
+      - Top Parameters: Date Picker, Currency pills (SGD default), Amount/$ vs % mode toggle, Refresh button.
+      - 6 Metric Badges with hover rollover tooltips displaying calculation formulas.
+      - Chart 1: Valuation & Capital Structure (Total Size, Capital, Margin) across 1M, 3M, 6M, 12M.
+      - Chart 2: Cumulative PnL Attribution (Total Portfolio + Top stocks) with interactive legend pill toggles.
+      - Synchronized crosshair date tracking.
+      - 4-Quadrant AI Portfolio Intelligence panel with stance pills and bullets.
+  - Verification: Vitest unit testing and UI render verification.
+- [ ] Task 8: Comprehensive Unit & Integration Tests <!-- id: 8 -->
+  - Author and run tests: `tests/backend/test_portfolio_overview.py`, `tests/backend/test_research_no_mock.py`, `tests/frontend/portfolio_overview.test.tsx`, `tests/frontend/analyst_committee_sync.test.tsx`.
+- [ ] Task 9: Full 3-Tier CI-Parity Gate Verification <!-- id: 9 -->
+  - Execute full gate: Tier 1 (Ruff check & format), Tier 2 (Mypy), Tier 3 (Pytest & Vitest) across root `.`.
+- [ ] Task 10: Documentation & Walkthrough <!-- id: 10 -->
+  - Author `Epics/0.6/WALKTHROUGH.md` mapping requirements to files and test outputs.
