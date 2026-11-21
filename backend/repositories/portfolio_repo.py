@@ -23,6 +23,8 @@ from backend.schemas.transactions import (
     CapitalTransactionInput,
     TradeTransactionInput,
     TransCostCreate,
+    normalize_capital_accounttype,
+    normalize_capital_transtype,
 )
 
 logger = logging.getLogger(__name__)
@@ -74,19 +76,9 @@ def create_capital(
     """Create a new capital transaction record with audit logging."""
     d_obj = datetime.fromisoformat(item.date).date() if isinstance(item.date, str) else item.date
 
-    # Normalize account type for consistency with baseline ledger conventions (C/M/L)
-    raw_acc = str(item.accounttype or "").strip()
-    if raw_acc.upper() in ("CASH", "C"):
-        acc_type = "C"
-    elif raw_acc.upper() in ("MARGIN", "M"):
-        acc_type = "M"
-    elif raw_acc.upper() in ("LEVERAGE", "L"):
-        acc_type = "L"
-    else:
-        acc_type = raw_acc
-
-    # Format amount signed correctly: Deposits (+), Withdrawals (-)
-    raw_type = str(item.transtype or "D").strip().upper()
+    # Normalize account/transaction types to match PROD 4leafclover CHECK constraints (C/M, D/F/W)
+    acc_type = normalize_capital_accounttype(item.accounttype)
+    raw_type = normalize_capital_transtype(item.transtype)
     amt = float(item.amount)
     if raw_type == "W" and amt > 0:
         amt = -amt
@@ -158,18 +150,9 @@ def update_capital(
         "remarks": record.remarks,
     }
 
-    # Normalize account type for consistency with baseline ledger conventions (C/M/L)
-    raw_acc = str(item.accounttype or "").strip()
-    if raw_acc.upper() in ("CASH", "C"):
-        acc_type = "C"
-    elif raw_acc.upper() in ("MARGIN", "M"):
-        acc_type = "M"
-    elif raw_acc.upper() in ("LEVERAGE", "L"):
-        acc_type = "L"
-    else:
-        acc_type = raw_acc
-
-    raw_type = str(item.transtype or record.transtype or "D").strip().upper()
+    # Normalize account/transaction types to match PROD 4leafclover CHECK constraints (C/M, D/F/W)
+    acc_type = normalize_capital_accounttype(item.accounttype)
+    raw_type = normalize_capital_transtype(item.transtype or record.transtype or "D")
     amt = float(item.amount)
     if raw_type == "W" and amt > 0:
         amt = -amt
