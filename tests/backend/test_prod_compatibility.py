@@ -140,7 +140,7 @@ class TestProdSchemaGuardEndpoints:
 
 
 class TestDeployProdWorkflowContract:
-    """Verify deploy-prod.yml targets alpha-insight-web-prod and excludes the daily job."""
+    """Verify deploy-prod.yml targets alpha-insight-web-prod and alpha-insight-daily-job-prod."""
 
     def test_deploy_prod_workflow_configuration(self) -> None:
         workflow_path = PROJECT_ROOT / ".github" / "workflows" / "deploy-prod.yml"
@@ -150,7 +150,9 @@ class TestDeployProdWorkflowContract:
         assert "gcloud run deploy alpha-insight-web-prod" in content
         assert "gcloud run services describe alpha-insight-web-prod" in content
         assert "uv run alembic upgrade head" in content
-        assert "alpha-insight-daily-job" not in content
+        assert "alpha-insight-daily-job-prod" in content
+        assert "API_URL=${WEB_URL}" in content
+        assert "API_KEY=alpha-api-key:latest" in content
 
 
 class TestVerifyProdCutoverLogic:

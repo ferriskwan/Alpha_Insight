@@ -64,16 +64,16 @@ def _seed_user_and_watchlist(db_session: Session) -> None:
     db_session.commit()
 
 
-def test_default_model_is_gemini_4_argon(client: TestClient) -> None:
-    """SC-01: Verify default model in Settings and /api/v1/committee/models is gemini-4-argon."""
+def test_default_model_is_gemini_4_neon(client: TestClient) -> None:
+    """SC-01: Verify default model in Settings and /api/v1/committee/models is gemini-4-neon."""
     settings = get_settings()
-    assert settings.gemini_default_model == "gemini-4-argon"
+    assert settings.gemini_default_model == "gemini-4-neon"
 
     res = client.get("/api/v1/committee/models")
     assert res.status_code == 200
     models = res.json()
     assert isinstance(models, list)
-    assert any(m["id"] == "gemini-4-argon" and m["is_default"] is True for m in models)
+    assert any(m["id"] == "gemini-4-neon" and m["is_default"] is True for m in models)
 
 
 def test_segregated_4_analyst_prompts_and_executive_summary() -> None:

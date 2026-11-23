@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     db_password: str = Field(default="", alias="DB_PASSWORD")
     db_sslmode: str = Field(default="require", alias="DB_SSLMODE")
     database_url_override: Optional[str] = Field(default=None, alias="DATABASE_URL")
+    db_pool_size: int = Field(default=3, alias="DB_POOL_SIZE")
+    db_max_overflow: int = Field(default=5, alias="DB_MAX_OVERFLOW")
+    db_pool_recycle: int = Field(default=300, alias="DB_POOL_RECYCLE")
+    db_pool_timeout: int = Field(default=30, alias="DB_POOL_TIMEOUT")
+    db_raw_pool_maxconn: int = Field(default=5, alias="DB_RAW_POOL_MAXCONN")
 
     # Authentication & Session Configuration
     google_client_id: str = Field(default="", alias="GOOGLE_CLIENT_ID")
@@ -50,7 +55,7 @@ class Settings(BaseSettings):
     )
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     gemini_default_model: str = Field(
-        default="gemini-4-argon",
+        default="gemini-4-neon",
         alias="GEMINI_DEFAULT_MODEL",
     )
     kimi_api_key: str = Field(default="", alias="KIMI_API_KEY")

@@ -128,6 +128,69 @@ jobs:
           API_KEY=alpha-api-key:latest" \
             --project ${{ env.PROJECT_ID }}
 
+      - name: Build & Push Daily Job Container (PROD)
+        env:
+          IMAGE_TAG: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-daily-job"
+        run: |
+          docker build \
+            -f Dockerfile.job \
+            -t ${IMAGE_TAG}:${{ github.sha }} \
+            -t ${IMAGE_TAG}:latest \
+            .
+          docker push ${IMAGE_TAG}:${{ github.sha }}
+          docker push ${IMAGE_TAG}:latest
+
+      - name: Deploy Cloud Run Job (alpha-insight-daily-job-prod)
+        env:
+          IMAGE_URI: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-daily-job:${{ github.sha }}"
+        run: |
+          WEB_URL=$(gcloud run services describe alpha-insight-web-prod --region ${{ env.REGION }} --project ${{ env.PROJECT_ID }} --format="value(status.url)")
+          echo "Resolved PROD Web API_URL for daily job: ${WEB_URL}"
+
+          if gcloud run jobs describe alpha-insight-daily-job-prod --region ${{ env.REGION }} --project ${{ env.PROJECT_ID }} >/dev/null 2>&1; then
+            gcloud run jobs update alpha-insight-daily-job-prod \
+              --image ${IMAGE_URI} \
+              --region ${{ env.REGION }} \
+              --memory 1Gi \
+              --cpu 1 \
+              --max-retries 1 \
+              --set-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
+              --set-env-vars "\
+            ENV=PRD,\
+            API_URL=${WEB_URL},\
+            DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
+            DB_NAME=${{ env.PROD_DB_NAME }},\
+            DB_USER=postgres,\
+            DB_PORT=5432,\
+            DB_SSLMODE=disable" \
+              --set-secrets "\
+            DB_PASSWORD=alpha-db-password:latest,\
+            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest,\
+            API_KEY=alpha-api-key:latest" \
+              --project ${{ env.PROJECT_ID }}
+          else
+            gcloud run jobs create alpha-insight-daily-job-prod \
+              --image ${IMAGE_URI} \
+              --region ${{ env.REGION }} \
+              --memory 1Gi \
+              --cpu 1 \
+              --max-retries 1 \
+              --set-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
+              --set-env-vars "\
+            ENV=PRD,\
+            API_URL=${WEB_URL},\
+            DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
+            DB_NAME=${{ env.PROD_DB_NAME }},\
+            DB_USER=postgres,\
+            DB_PORT=5432,\
+            DB_SSLMODE=disable" \
+              --set-secrets "\
+            DB_PASSWORD=alpha-db-password:latest,\
+            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest,\
+            API_KEY=alpha-api-key:latest" \
+              --project ${{ env.PROJECT_ID }}
+          fi
+
       - name: Validate Production Health Endpoint Probe
         run: |
           WEB_URL=$(gcloud run services describe alpha-insight-web-prod --region ${{ env.REGION }} --format="value(status.url)")

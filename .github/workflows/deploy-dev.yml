@@ -145,8 +145,11 @@ jobs:
         env:
           IMAGE_URI: "${{ env.REGISTRY_HOST }}/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/alpha-insight-daily-job-dev:${{ github.sha }}"
         run: |
+          WEB_URL=$(gcloud run services describe alpha-insight-web-dev --region ${{ env.REGION }} --project ${{ env.PROJECT_ID }} --format="value(status.url)")
+          echo "Resolved DEV Web API_URL for daily job: ${WEB_URL}"
+
           # Create or update Cloud Run Job
-          if gcloud run jobs describe alpha-insight-daily-job-dev --region ${{ env.REGION }} >/dev/null 2>&1; then
+          if gcloud run jobs describe alpha-insight-daily-job-dev --region ${{ env.REGION }} --project ${{ env.PROJECT_ID }} >/dev/null 2>&1; then
             gcloud run jobs update alpha-insight-daily-job-dev \
               --image ${IMAGE_URI} \
               --region ${{ env.REGION }} \
@@ -156,6 +159,7 @@ jobs:
               --set-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
               --set-env-vars "\
             ENV=DEV,\
+            API_URL=${WEB_URL},\
             DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
             DB_NAME=${{ env.DEV_DB_NAME }},\
             DB_USER=postgres,\
@@ -163,7 +167,8 @@ jobs:
             DB_SSLMODE=disable" \
               --set-secrets "\
             DB_PASSWORD=alpha-db-password-dev:latest,\
-            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest" \
+            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest,\
+            API_KEY=alpha-api-key-dev:latest" \
               --project ${{ env.PROJECT_ID }}
           else
             gcloud run jobs create alpha-insight-daily-job-dev \
@@ -175,6 +180,7 @@ jobs:
               --set-cloudsql-instances ${{ env.INSTANCE_CONNECTION }} \
               --set-env-vars "\
             ENV=DEV,\
+            API_URL=${WEB_URL},\
             DB_HOST=/cloudsql/${{ env.INSTANCE_CONNECTION }},\
             DB_NAME=${{ env.DEV_DB_NAME }},\
             DB_USER=postgres,\
@@ -182,7 +188,8 @@ jobs:
             DB_SSLMODE=disable" \
               --set-secrets "\
             DB_PASSWORD=alpha-db-password-dev:latest,\
-            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest" \
+            TWELVEDATA_API_KEY=alpha-twelvedata-api-key:latest,\
+            API_KEY=alpha-api-key-dev:latest" \
               --project ${{ env.PROJECT_ID }}
           fi
 

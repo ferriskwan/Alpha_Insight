@@ -45,7 +45,7 @@ const DEFAULT_STARTER_PROMPTS = [
 export const FloatingAgentChat: React.FC<FloatingAgentChatProps> = ({
   open,
   onClose,
-  model = 'gemini-4-argon',
+  model = 'gemini-4-neon',
   displayedContext,
   messages,
   loading = false,

@@ -14,6 +14,7 @@ import {
   AgentAnalystOutputDTO,
   AnalystRoleType,
   OhlcvValue,
+  PositionRecord,
   TradeRecord,
 } from '../../types/api';
 import apiClient from '../../services/apiClient';
@@ -66,17 +67,18 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
   onContextUpdate,
 }) => {
   const [watchlist, setWatchlist] = useState<WatchlistEnrichedItem[]>([]);
+  const [openPositionSymbols, setOpenPositionSymbols] = useState<Set<string>>(new Set());
   const [models, setModels] = useState<ModelOptionItem[]>([
     {
-      id: 'gemini-4-argon',
-      label: 'Gemini 4 Argon (Default Committee Model)',
+      id: 'gemini-4-neon',
+      label: 'Gemini 4 Neon (Default Committee Model)',
       provider: 'gemini',
       is_default: true,
     },
   ]);
 
   const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-argon');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-neon');
   const [lookbackRuns, setLookbackRuns] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<AnalystRoleType>('executive_summary');
   const [chartMode, setChartMode] = useState<'multiday' | 'intraday'>('multiday');
@@ -98,19 +100,51 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
     }
   }, [initialSymbol]);
 
+  const isIndexWatchlistItem = (item: WatchlistEnrichedItem): boolean => {
+    const sym = (item.symbol || '').trim().toUpperCase();
+    const wlName = (item.watchlistname || '').trim().toLowerCase();
+    return sym.startsWith('^') || wlName.includes('index');
+  };
+
   useEffect(() => {
     let mounted = true;
     Promise.all([
       apiClient.getWatchlistItems('All').catch(() => []),
       apiClient.getCommitteeModels().catch(() => []),
-    ]).then(([wlItems, modelItems]) => {
+      apiClient.getPositions().catch(() => [] as PositionRecord[]),
+    ]).then(([wlItems, modelItems, posItems]) => {
       if (!mounted) return;
+      const openSet = new Set<string>();
+      for (const p of posItems || []) {
+        if (p.symbol && Math.abs(Number(p.quantity || 0)) > 0) {
+          openSet.add(p.symbol.trim().toUpperCase());
+        }
+      }
+      setOpenPositionSymbols(openSet);
+
       if (wlItems && wlItems.length > 0) {
         setWatchlist(wlItems);
-        // Automatically default to the first real watchlist symbol if selectedSymbol is empty or not in watchlist
-        const symSet = new Set(wlItems.map((w) => w.symbol));
-        if (!selectedSymbol || !symSet.has(selectedSymbol)) {
-          setSelectedSymbol(wlItems[0].symbol);
+        // Deduplicate & sort into 3 tiers to determine default selection:
+        // 1) Open positions (alpha), 2) Other stocks (alpha), 3) Indexes (alpha)
+        const seen = new Set<string>();
+        const deduped: WatchlistEnrichedItem[] = [];
+        for (const w of wlItems) {
+          const key = (w.symbol || '').trim().toUpperCase();
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            deduped.push(w);
+          }
+        }
+        const bySymAsc = (a: WatchlistEnrichedItem, b: WatchlistEnrichedItem) =>
+          (a.symbol || '').localeCompare(b.symbol || '');
+        const tier1 = deduped.filter((w) => !isIndexWatchlistItem(w) && openSet.has(w.symbol.trim().toUpperCase())).sort(bySymAsc);
+        const tier2 = deduped.filter((w) => !isIndexWatchlistItem(w) && !openSet.has(w.symbol.trim().toUpperCase())).sort(bySymAsc);
+        const tier3 = deduped.filter((w) => isIndexWatchlistItem(w)).sort(bySymAsc);
+        const ordered = [...tier1, ...tier2, ...tier3];
+
+        const symSet = new Set(ordered.map((w) => w.symbol));
+        if ((!selectedSymbol || !symSet.has(selectedSymbol)) && ordered.length > 0) {
+          setSelectedSymbol(ordered[0].symbol);
         }
       } else {
         setWatchlist([]);
@@ -330,17 +364,31 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
   const getBiasBadgeClasses = getAnalystBiasBadgeClasses;
   const getTrendBadgeClasses = getAnalystTrendBadgeClasses;
 
-  const distinctWatchlistSymbols = useMemo(() => {
+  const tieredWatchlistSymbols = useMemo(() => {
     const seen = new Set<string>();
-    const list: WatchlistEnrichedItem[] = [];
+    const deduped: WatchlistEnrichedItem[] = [];
     for (const item of watchlist) {
-      if (!seen.has(item.symbol)) {
-        seen.add(item.symbol);
-        list.push(item);
+      const key = (item.symbol || '').trim().toUpperCase();
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        deduped.push(item);
       }
     }
-    return list;
-  }, [watchlist]);
+    const bySymAsc = (a: WatchlistEnrichedItem, b: WatchlistEnrichedItem) =>
+      (a.symbol || '').localeCompare(b.symbol || '');
+
+    const positions = deduped
+      .filter((w) => !isIndexWatchlistItem(w) && openPositionSymbols.has(w.symbol.trim().toUpperCase()))
+      .sort(bySymAsc);
+    const otherStocks = deduped
+      .filter((w) => !isIndexWatchlistItem(w) && !openPositionSymbols.has(w.symbol.trim().toUpperCase()))
+      .sort(bySymAsc);
+    const indexes = deduped
+      .filter((w) => isIndexWatchlistItem(w))
+      .sort(bySymAsc);
+
+    return { positions, otherStocks, indexes };
+  }, [watchlist, openPositionSymbols]);
 
   return (
     <div className="space-y-4" data-testid="analyst-committee-view">
@@ -375,11 +423,33 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
               onChange={(e) => setSelectedSymbol(e.target.value)}
               className="px-2.5 py-1.5 bg-white border border-slate-300 rounded text-xs font-mono font-semibold text-slate-900 cursor-pointer"
             >
-              {distinctWatchlistSymbols.map((item) => (
-                <option key={item.symbol} value={item.symbol}>
-                  {item.symbol} — {item.name || item.symbol}
-                </option>
-              ))}
+              {tieredWatchlistSymbols.positions.length > 0 && (
+                <optgroup label="My Positions">
+                  {tieredWatchlistSymbols.positions.map((item) => (
+                    <option key={item.symbol} value={item.symbol}>
+                      {item.symbol} — {item.name || item.symbol}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {tieredWatchlistSymbols.otherStocks.length > 0 && (
+                <optgroup label="Other Stocks">
+                  {tieredWatchlistSymbols.otherStocks.map((item) => (
+                    <option key={item.symbol} value={item.symbol}>
+                      {item.symbol} — {item.name || item.symbol}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {tieredWatchlistSymbols.indexes.length > 0 && (
+                <optgroup label="Indexes">
+                  {tieredWatchlistSymbols.indexes.map((item) => (
+                    <option key={item.symbol} value={item.symbol}>
+                      {item.symbol} — {item.name || item.symbol}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 

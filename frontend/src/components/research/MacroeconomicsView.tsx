@@ -11,6 +11,8 @@ import {
   ModelOptionItem,
   AgentAnalystOutputDTO,
   AnalystRoleType,
+  CommitteeRunDetailDTO,
+  CommitteeRunSummaryDTO,
   OhlcvValue,
   MacroWorkbenchResponseDTO,
   WatchlistIndexSnapshotItem,
@@ -69,20 +71,22 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
 }) => {
   const [models, setModels] = useState<ModelOptionItem[]>([
     {
-      id: 'gemini-4-argon',
-      label: 'Gemini 4 Argon (Default Committee Model)',
+      id: 'gemini-4-neon',
+      label: 'Gemini 4 Neon (Default Committee Model)',
       provider: 'gemini',
       is_default: true,
     },
   ]);
 
   const [benchmarkSymbol, setBenchmarkSymbol] = useState<string>('^SPX');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-argon');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-neon');
   const [lookbackRuns, setLookbackRuns] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<AnalystRoleType>('macro_us');
   const [chartMode, setChartMode] = useState<'multiday' | 'intraday'>('multiday');
 
   const [workbench, setWorkbench] = useState<MacroWorkbenchResponseDTO | null>(null);
+  const [runs, setRuns] = useState<CommitteeRunSummaryDTO[]>([]);
+  const [selectedRun, setSelectedRun] = useState<CommitteeRunDetailDTO | null>(null);
   const [chartCandles, setChartCandles] = useState<OhlcvValue[]>([]);
   const [intradayCandles, setIntradayCandles] = useState<OhlcvValue[]>([]);
 
@@ -112,8 +116,13 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
     setLoadingInitial(true);
     setErrorMsg(null);
     try {
-      const data = await apiClient.getLatestMacroWorkbench(benchSym);
+      const [data, runsData] = await Promise.all([
+        apiClient.getLatestMacroWorkbench(benchSym),
+        apiClient.getCommitteeRuns('MACRO', 30).catch(() => [] as CommitteeRunSummaryDTO[]),
+      ]);
       setWorkbench(data);
+      setRuns(runsData || []);
+      setSelectedRun(null);
       setChartCandles(
         (data.chart_candles || []).map((c) => ({
           datetime: c.date,
@@ -160,6 +169,11 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
         lookback_runs: lookbackRuns,
       });
       setWorkbench(data);
+      setSelectedRun(null);
+      apiClient
+        .getCommitteeRuns('MACRO', 30)
+        .then((runsData) => setRuns(runsData || []))
+        .catch(() => {});
       if (data.chart_candles && data.chart_candles.length > 0) {
         setChartCandles(
           data.chart_candles.map((c) => ({
@@ -180,22 +194,33 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
     }
   };
 
+  const handleSelectRun = async (runId: number) => {
+    setErrorMsg(null);
+    try {
+      const detail = await apiClient.getCommitteeRunDetail(runId);
+      setSelectedRun(detail);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to load selected Macroeconomics run.');
+    }
+  };
+
+  const activeRun = selectedRun || workbench?.run || null;
+
   const outputsByRole = useMemo(() => {
     const map: Partial<Record<AnalystRoleType, AgentAnalystOutputDTO>> = {};
-    if (workbench && workbench.outputs) {
-      for (const out of workbench.outputs) {
-        map[out.analyst_role] = out;
-      }
+    const sourceOutputs = selectedRun?.outputs || workbench?.outputs || [];
+    for (const out of sourceOutputs) {
+      map[out.analyst_role] = out;
     }
     return map;
-  }, [workbench]);
+  }, [selectedRun, workbench]);
 
   useEffect(() => {
     if (!onContextUpdate) return;
     const pills: string[] = [`Active Context: MACRO (${benchmarkSymbol})`];
-    if (workbench?.run) {
-      pills.push(`Macro Run #${workbench.run.id} (${workbench.run.consensus_bias})`);
-      pills.push(`Model: ${workbench.run.model}`);
+    if (activeRun) {
+      pills.push(`Macro Run #${activeRun.id} (${activeRun.consensus_bias})`);
+      pills.push(`Model: ${activeRun.model}`);
     } else {
       pills.push('Watchlist-Derived Macroeconomics');
     }
@@ -209,8 +234,8 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
         benchmarkSymbol,
         model: selectedModel,
         activeTab,
-        activeRunId: workbench?.run?.id || null,
-        consensusBias: workbench?.run?.consensus_bias || null,
+        activeRunId: activeRun?.id || null,
+        consensusBias: activeRun?.consensus_bias || null,
         watchlistExposure: workbench?.watchlist_exposure || {},
         fxRates: workbench?.fx_rates || [],
         benchmarkSnapshots: workbench?.benchmark_snapshots || [],
@@ -497,7 +522,9 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
             activeTab={activeTab}
             onTabChange={setActiveTab}
             outputsByRole={outputsByRole}
-            activeRun={workbench?.run || null}
+            activeRun={activeRun}
+            runs={runs}
+            onSelectRun={handleSelectRun}
             running={running}
             loadingInitial={loadingInitial}
             selectedModel={selectedModel}
@@ -544,7 +571,12 @@ export const MacroeconomicsView: React.FC<MacroeconomicsViewProps> = ({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {allHistory.slice(0, 12).map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-50">
+                  <tr
+                    key={item.id}
+                    onClick={() => handleSelectRun(item.run_id)}
+                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                    title={`Click to view Macro Run #${item.run_id}`}
+                  >
                     <td className="py-2 px-3 font-mono font-semibold text-slate-900">
                       #{item.id}
                     </td>

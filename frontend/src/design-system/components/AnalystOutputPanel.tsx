@@ -62,7 +62,7 @@ export const AnalystOutputPanel: React.FC<AnalystOutputPanelProps> = ({
   selectedSymbol,
   running = false,
   loadingInitial = false,
-  selectedModel = 'gemini-4-argon',
+  selectedModel = 'gemini-4-neon',
   pastOutputsCount = 0,
   emptyTitle = 'No stored analysis run yet.',
   emptyDescription = 'Click "Perform Analysis" above to dispatch the specialist agents.',

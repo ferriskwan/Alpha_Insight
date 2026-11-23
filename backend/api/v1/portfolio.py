@@ -198,7 +198,9 @@ def list_trades(
     results: list[dict[str, Any]] = []
     for t in trades:
         clean_sym = (t.symbol or "").strip().upper()
-        sym_ccy = wl_map.get(clean_sym) or ("SGD" if clean_sym.endswith(".SI") else "USD")
+        sym_ccy = wl_map.get(clean_sym) or (
+            "SGD" if clean_sym.endswith(".SI") else ("HKD" if clean_sym.endswith(".HK") else "USD")
+        )
 
         # Derive previous-day exchange rate (max(date) < tradedate)
         fx_rate = 1.0
