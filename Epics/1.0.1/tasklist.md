@@ -44,3 +44,4 @@
   - Tier 3: `pytest` (123 passed), `vitest run` (17 files / 93 passed).
 - [x] **T12**: Perform `spec-orchestrator` + `ui-ux-designer` audit (hardcoding, DRY, architecture, PRD cross-reference) and author `Epics/1.0.1/WALKTHROUGH.md`.
   - All 7 PRD items verified `[UAT PASSED]`; walkthrough written to `Epics/1.0.1/WALKTHROUGH.md`.
+- [x] **T13 (PR & Merge)**: Pre-PR scan verified via `deterministic-resolver`, branch `1.0.1` pushed to GitHub, PR #9 created against `dev`, CI validation gate passed (Tier 1-3), and PR merged into `dev` (`834695a2`). Deploy to Development Cloud Run workflow triggered.
