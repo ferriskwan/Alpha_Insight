@@ -136,6 +136,42 @@ const INITIAL_NODES: SiteMapNode[] = [
   },
 ];
 
+export function buildSortedHierarchyTree(rawNodes: SiteMapNode[]): SiteMapNode[] {
+  // Flatten both flat arrays and pre-nested trees into a deduplicated node map
+  const nodeMap = new Map<number, SiteMapNode>();
+  const collect = (items: SiteMapNode[]) => {
+    for (const item of items) {
+      nodeMap.set(item.id, { ...item, children: [] });
+      if (item.children && item.children.length > 0) {
+        collect(item.children);
+      }
+    }
+  };
+  collect(rawNodes);
+
+  const roots: SiteMapNode[] = [];
+  nodeMap.forEach((node) => {
+    if (node.parent_id !== null && node.parent_id !== undefined && nodeMap.has(node.parent_id) && node.parent_id !== node.id) {
+      const parent = nodeMap.get(node.parent_id)!;
+      parent.children = parent.children || [];
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  const sortRecursive = (list: SiteMapNode[]) => {
+    list.sort((a, b) => (a.order_index - b.order_index) || (a.id - b.id));
+    for (const item of list) {
+      if (item.children && item.children.length > 0) {
+        sortRecursive(item.children);
+      }
+    }
+  };
+  sortRecursive(roots);
+  return roots;
+}
+
 export const SiteMapAdmin: React.FC = () => {
   const [nodes, setNodes] = useState<SiteMapNode[]>(INITIAL_NODES);
   const [loading, setLoading] = useState(false);
@@ -164,8 +200,9 @@ export const SiteMapAdmin: React.FC = () => {
     try {
       const data = await apiClient.getAdminSitemap();
       if (data && Array.isArray(data) && data.length > 0) {
-        setNodes(data);
-        if (!selectedNode) setSelectedNode(data[0]);
+        const hierarchical = buildSortedHierarchyTree(data);
+        setNodes(hierarchical);
+        if (!selectedNode && hierarchical.length > 0) setSelectedNode(hierarchical[0]);
       }
     } catch (err: unknown) {
       console.warn('Could not fetch admin sitemap from backend; retaining local tree', err);
@@ -235,6 +272,7 @@ export const SiteMapAdmin: React.FC = () => {
         setSelectedNode(created);
       } else if (selectedNode) {
         const payload: SiteMapUpdateRequest = {
+          parent_id: parentId,
           label,
           route,
           icon,

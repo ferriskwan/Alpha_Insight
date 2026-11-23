@@ -19,16 +19,35 @@ _session_factory: Optional[sessionmaker[Session]] = None
 
 
 def get_engine() -> Engine:
-    """Return or create the SQLAlchemy Engine."""
+    """Return or create the SQLAlchemy Engine with bounded pool configuration."""
     global _engine
     if _engine is None:
         settings = get_settings()
-        _engine = create_engine(
-            settings.sqlalchemy_database_uri,
-            pool_pre_ping=True,
-            future=True,
-        )
+        uri = settings.sqlalchemy_database_uri
+        engine_kwargs: dict[str, Any] = {
+            "pool_pre_ping": True,
+            "future": True,
+        }
+        if not uri.startswith("sqlite"):
+            engine_kwargs.update(
+                {
+                    "pool_size": settings.db_pool_size,
+                    "max_overflow": settings.db_max_overflow,
+                    "pool_recycle": settings.db_pool_recycle,
+                    "pool_timeout": settings.db_pool_timeout,
+                }
+            )
+        _engine = create_engine(uri, **engine_kwargs)
     return _engine
+
+
+def dispose_engine() -> None:
+    """Dispose the SQLAlchemy Engine and release pooled database connections."""
+    global _engine, _session_factory
+    if _engine is not None:
+        _engine.dispose()
+        _engine = None
+    _session_factory = None
 
 
 def get_session_factory() -> sessionmaker[Session]:
@@ -57,7 +76,8 @@ def get_db_session() -> Generator[Session, None, None]:
 def init_db_pool() -> None:
     """Initialize the psycopg2 ThreadedConnectionPool in ProcessData."""
     try:
-        pd_module.init_pool(minconn=1, maxconn=20)
+        settings = get_settings()
+        pd_module.init_pool(minconn=1, maxconn=settings.db_raw_pool_maxconn)
     except Exception as exc:
         logger.warning("Could not initialize psycopg2 connection pool at startup: %s", exc)
 

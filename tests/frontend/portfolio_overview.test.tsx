@@ -161,7 +161,7 @@ describe('Epic 0.6: Portfolio Overview Upgrade Frontend Tests', () => {
     expect(await screen.findByText('Portfolio Overview')).toBeInTheDocument();
 
     // Top stock pill buttons rendered
-    const stockPill = await screen.findByRole('button', { name: /5E2.SI/i });
+    const stockPill = await screen.findByLabelText(/Toggle 5E2.SI/i);
     expect(stockPill).toBeInTheDocument();
     fireEvent.click(stockPill); // Toggle off
 

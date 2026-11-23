@@ -19,6 +19,11 @@ import { ModalDialog } from '../../design-system';
 import apiClient from '../../services/apiClient';
 import { TradeRecord, CapitalRecord, TransCostItem, PositionRecord, WatchlistEnrichedItem } from '../../types/api';
 import { formatTradeDate } from '../../lib/dateFormatter';
+import {
+  getCurrencyBadgeClasses,
+  getCurrencyPrefix,
+  inferSymbolCurrency,
+} from '../../lib/currency';
 
 export type GroupByField = 'tradedate' | 'symbol' | 'side' | 'account';
 export type GroupByOption = 'none' | GroupByField;
@@ -856,12 +861,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
   }, [watchlist]);
 
   const getTradeCurrency = (t: TradeRecord): string => {
-    if (t.currency) return t.currency.toUpperCase();
-    const sym = (t.symbol || '').trim().toUpperCase();
-    const wlCcy = watchlistCurrencyMap.get(sym);
-    if (wlCcy) return wlCcy;
-    if (sym.endsWith('.SI')) return 'SGD';
-    return 'USD';
+    return inferSymbolCurrency(t.symbol, t.currency, watchlistCurrencyMap);
   };
 
   const getTradeFxRate = (t: TradeRecord): number => {
@@ -869,7 +869,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
     return 1.0;
   };
 
-  // Option B: Multi-Currency Subtotals & Consolidated USD Total
+  // Dynamic Multi-Currency Subtotals (alphabetical) & Consolidated USD Grand Total
   const multiCurrencySummaries = useMemo(() => {
     const calcSubtotal = (tradeList: TradeRecord[]) => {
       let totalBuyQty = 0;
@@ -935,10 +935,26 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
       };
     };
 
-    const usdTrades = trades.filter((t) => getTradeCurrency(t) === 'USD');
-    const sgdTrades = trades.filter((t) => getTradeCurrency(t) === 'SGD');
-    const usdSub = calcSubtotal(usdTrades);
-    const sgdSub = calcSubtotal(sgdTrades);
+    const byCurrency = new Map<string, TradeRecord[]>();
+    for (const t of trades) {
+      const ccy = getTradeCurrency(t);
+      const list = byCurrency.get(ccy);
+      if (list) {
+        list.push(t);
+      } else {
+        byCurrency.set(ccy, [t]);
+      }
+    }
+
+    const sortedCurrencies = Array.from(byCurrency.keys()).sort((a, b) => a.localeCompare(b));
+    const currencies = sortedCurrencies.map((ccy) => {
+      const list = byCurrency.get(ccy) || [];
+      return {
+        currency: ccy,
+        trades: list,
+        subtotal: calcSubtotal(list),
+      };
+    });
 
     // Consolidated in USD using each trade's previous-day fx_rate (max(date) < tradedate)
     let consolidatedBuyCostUSD = 0;
@@ -958,23 +974,28 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
       }
     }
 
-    const avgSgdFx =
-      sgdTrades.length > 0
-        ? sgdTrades.reduce((acc, t) => acc + getTradeFxRate(t), 0) / sgdTrades.length
-        : 1.30;
-    const consolidatedRealizedPnLUSD = usdSub.realizedPnL + (sgdSub.realizedPnL / (avgSgdFx || 1.30));
+    // Dynamic per-currency Realized PnL consolidation into USD
+    let consolidatedRealizedPnLUSD = 0;
+    for (const entry of currencies) {
+      if (entry.currency === 'USD') {
+        consolidatedRealizedPnLUSD += entry.subtotal.realizedPnL;
+      } else {
+        const fxRates = entry.trades.map((t) => getTradeFxRate(t)).filter((r) => r > 0);
+        const avgFx =
+          fxRates.length > 0
+            ? fxRates.reduce((acc, r) => acc + r, 0) / fxRates.length
+            : 1.0;
+        consolidatedRealizedPnLUSD += entry.subtotal.realizedPnL / (avgFx || 1.0);
+      }
+    }
 
     return {
-      usd: usdSub,
-      sgd: sgdSub,
+      currencies,
       consolidated: {
         count: trades.length,
-        totalBuyQty: usdSub.totalBuyQty + sgdSub.totalBuyQty,
-        totalSellQty: usdSub.totalSellQty + sgdSub.totalSellQty,
         totalBuyConsiderationUSD: consolidatedBuyCostUSD,
         totalSellConsiderationUSD: consolidatedSellCostUSD,
         realizedPnLUSD: consolidatedRealizedPnLUSD,
-        netBalance: usdSub.netBalance + sgdSub.netBalance,
       },
     };
   }, [trades, watchlistCurrencyMap]);
@@ -983,20 +1004,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
   const grandTotal = useMemo(() => {
     return {
       count: multiCurrencySummaries.consolidated.count,
-      totalBuyQty: multiCurrencySummaries.consolidated.totalBuyQty,
-      totalSellQty: multiCurrencySummaries.consolidated.totalSellQty,
       totalBuyConsideration: multiCurrencySummaries.consolidated.totalBuyConsiderationUSD,
       totalSellConsideration: multiCurrencySummaries.consolidated.totalSellConsiderationUSD,
-      avgBuyPrice: 0,
-      avgSellPrice: 0,
-      netBalance: multiCurrencySummaries.consolidated.netBalance,
       totalRealizedPnL: multiCurrencySummaries.consolidated.realizedPnLUSD,
-      totalUnrealizedPnL: 0,
-      totalQty: multiCurrencySummaries.consolidated.totalBuyQty + multiCurrencySummaries.consolidated.totalSellQty,
       totalConsideration:
         multiCurrencySummaries.consolidated.totalBuyConsiderationUSD +
         multiCurrencySummaries.consolidated.totalSellConsiderationUSD,
-      avgPrice: 0,
     };
   }, [multiCurrencySummaries]);
 
@@ -1524,7 +1537,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                       const isBuy = String(t.buysell).toUpperCase() === 'B';
                       const amount = (t.quantity || 0) * (t.price || 0);
                       const ccy = getTradeCurrency(t);
-                      const ccyPrefix = ccy === 'SGD' ? 'S$' : '$';
+                      const ccyPrefix = getCurrencyPrefix(ccy);
                       return (
                         <tr key={t.id || i} className="hover:bg-slate-50 transition-colors">
                           {activeMetadataCols.map((col, cIdx) =>
@@ -1533,37 +1546,33 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                           {/* Currency */}
                           <td className="py-2 px-3 whitespace-nowrap font-sans">
                             <span
-                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                ccy === 'SGD'
-                                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
-                              }`}
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold ${getCurrencyBadgeClasses(ccy)}`}
                             >
                               {ccy}
                             </span>
                           </td>
                           {/* BUY Cluster */}
                           <td className="py-2 px-2 text-right font-mono">
-                            {isBuy ? `$${(t.price || 0).toFixed(2)}` : '—'}
+                            {isBuy ? `${ccyPrefix}${(t.price || 0).toFixed(2)}` : '—'}
                           </td>
                           <td className="py-2 px-2 text-right font-mono font-semibold text-emerald-700">
                             {isBuy ? (t.quantity || 0).toLocaleString() : '—'}
                           </td>
                           <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
                             {isBuy
-                              ? `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              ? `${ccyPrefix}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : '—'}
                           </td>
                           {/* SELL Cluster */}
                           <td className="py-2 px-2 text-right font-mono">
-                            {!isBuy ? `$${(t.price || 0).toFixed(2)}` : '—'}
+                            {!isBuy ? `${ccyPrefix}${(t.price || 0).toFixed(2)}` : '—'}
                           </td>
                           <td className="py-2 px-2 text-right font-mono font-semibold text-rose-700">
                             {!isBuy ? (t.quantity || 0).toLocaleString() : '—'}
                           </td>
                           <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
                             {!isBuy
-                              ? `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              ? `${ccyPrefix}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                               : '—'}
                           </td>
                           {/* Remarks */}
@@ -1598,6 +1607,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                     /* Grouped dual ledger view */
                     tradeGroups.map((group) => {
                       const isCollapsed = !!collapsedGroups[group.key];
+                      const groupPrefix = getCurrencyPrefix(
+                        group.trades.length > 0 ? getTradeCurrency(group.trades[0]) : 'USD'
+                      );
                       return (
                         <React.Fragment key={group.key}>
                           {/* Sub-Aggregation Accordion Header */}
@@ -1630,7 +1642,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                         Avg Buy
                                       </span>
                                       <span className="font-bold text-emerald-700">
-                                        {group.avgBuyPrice > 0 ? `$${group.avgBuyPrice.toFixed(2)}` : '—'}
+                                        {group.avgBuyPrice > 0 ? `${groupPrefix}${group.avgBuyPrice.toFixed(2)}` : '—'}
                                       </span>
                                     </div>
                                     <div className="bg-white px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1 shadow-2xs">
@@ -1638,7 +1650,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                         Avg Sell
                                       </span>
                                       <span className="font-bold text-rose-700">
-                                        {group.avgSellPrice > 0 ? `$${group.avgSellPrice.toFixed(2)}` : '—'}
+                                        {group.avgSellPrice > 0 ? `${groupPrefix}${group.avgSellPrice.toFixed(2)}` : '—'}
                                       </span>
                                     </div>
                                     <div className="bg-white px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1 shadow-2xs">
@@ -1674,11 +1686,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                         }`}
                                       >
                                         {group.realizedPnL >= 0
-                                          ? `+$${group.realizedPnL.toLocaleString(undefined, {
+                                          ? `+${groupPrefix}${group.realizedPnL.toLocaleString(undefined, {
                                               minimumFractionDigits: 2,
                                               maximumFractionDigits: 2,
                                             })}`
-                                          : `-$${Math.abs(group.realizedPnL).toLocaleString(undefined, {
+                                          : `-${groupPrefix}${Math.abs(group.realizedPnL).toLocaleString(undefined, {
                                               minimumFractionDigits: 2,
                                               maximumFractionDigits: 2,
                                             })}`}
@@ -1698,11 +1710,11 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                         }`}
                                       >
                                         {group.unrealizedPnL >= 0
-                                          ? `+$${group.unrealizedPnL.toLocaleString(undefined, {
+                                          ? `+${groupPrefix}${group.unrealizedPnL.toLocaleString(undefined, {
                                               minimumFractionDigits: 2,
                                               maximumFractionDigits: 2,
                                             })}`
-                                          : `-$${Math.abs(group.unrealizedPnL).toLocaleString(undefined, {
+                                          : `-${groupPrefix}${Math.abs(group.unrealizedPnL).toLocaleString(undefined, {
                                               minimumFractionDigits: 2,
                                               maximumFractionDigits: 2,
                                             })}`}
@@ -1725,7 +1737,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                               const isBuy = String(t.buysell).toUpperCase() === 'B';
                               const amount = (t.quantity || 0) * (t.price || 0);
                               const ccy = getTradeCurrency(t);
-                              const ccyPrefix = ccy === 'SGD' ? 'S$' : '$';
+                              const ccyPrefix = getCurrencyPrefix(ccy);
                               return (
                                 <tr
                                   key={t.id || `${group.key}-${idx}`}
@@ -1737,25 +1749,21 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                   {/* Currency */}
                                   <td className="py-2 px-3 whitespace-nowrap font-sans">
                                     <span
-                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                        ccy === 'SGD'
-                                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                                          : 'bg-slate-100 text-slate-700 border border-slate-200'
-                                      }`}
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${getCurrencyBadgeClasses(ccy)}`}
                                     >
                                       {ccy}
                                     </span>
                                   </td>
                                   {/* BUY Cluster */}
                                   <td className="py-2 px-2 text-right font-mono">
-                                    {isBuy ? `$${(t.price || 0).toFixed(2)}` : '—'}
+                                    {isBuy ? `${ccyPrefix}${(t.price || 0).toFixed(2)}` : '—'}
                                   </td>
                                   <td className="py-2 px-2 text-right font-mono font-semibold text-emerald-700">
                                     {isBuy ? (t.quantity || 0).toLocaleString() : '—'}
                                   </td>
                                   <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
                                     {isBuy
-                                      ? `$${amount.toLocaleString(undefined, {
+                                      ? `${ccyPrefix}${amount.toLocaleString(undefined, {
                                           minimumFractionDigits: 2,
                                           maximumFractionDigits: 2,
                                         })}`
@@ -1763,14 +1771,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                   </td>
                                   {/* SELL Cluster */}
                                   <td className="py-2 px-2 text-right font-mono">
-                                    {!isBuy ? `$${(t.price || 0).toFixed(2)}` : '—'}
+                                    {!isBuy ? `${ccyPrefix}${(t.price || 0).toFixed(2)}` : '—'}
                                   </td>
                                   <td className="py-2 px-2 text-right font-mono font-semibold text-rose-700">
                                     {!isBuy ? (t.quantity || 0).toLocaleString() : '—'}
                                   </td>
                                   <td className="py-2 px-2 text-right font-mono font-bold text-slate-900">
                                     {!isBuy
-                                      ? `$${amount.toLocaleString(undefined, {
+                                      ? `${ccyPrefix}${amount.toLocaleString(undefined, {
                                           minimumFractionDigits: 2,
                                           maximumFractionDigits: 2,
                                         })}`
@@ -1813,183 +1821,113 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                 </tbody>
                 {trades.length > 0 && (
                   <tfoot>
-                    {/* Row 1: USD Subtotal */}
-                    {multiCurrencySummaries.usd.count > 0 && (
-                      <tr className="bg-slate-50 border-t-2 border-slate-300 text-xs text-slate-800 font-mono">
-                        <td
-                          colSpan={activeMetadataCols.length + 1}
-                          className="py-2.5 px-3 uppercase tracking-wider font-bold font-sans text-slate-800"
+                    {/* Dynamic Multi-Currency Sub-Totals (alphabetical order) */}
+                    {multiCurrencySummaries.currencies.map((entry, idx) => {
+                      const prefix = getCurrencyPrefix(entry.currency);
+                      const sub = entry.subtotal;
+                      const rowBg =
+                        idx === 0
+                          ? 'bg-slate-50 border-t-2 border-slate-300'
+                          : idx % 2 === 1
+                          ? 'bg-sky-50/40 border-t border-slate-200'
+                          : 'bg-slate-50 border-t border-slate-200';
+                      const labelColor =
+                        entry.currency === 'SGD'
+                          ? 'text-blue-900'
+                          : entry.currency === 'HKD'
+                          ? 'text-amber-900'
+                          : 'text-slate-800';
+                      return (
+                        <tr
+                          key={entry.currency}
+                          data-testid={`subtotal-row-${entry.currency}`}
+                          className={`${rowBg} text-xs text-slate-800 font-mono`}
                         >
-                          USD Sub-Total ({multiCurrencySummaries.usd.count}{' '}
-                          {multiCurrencySummaries.usd.count === 1 ? 'trade' : 'trades'})
-                        </td>
-                        <td className="py-2.5 px-2 text-right text-slate-600">
-                          <span className="text-[10px] text-slate-400 font-sans mr-0.5">Avg</span>
-                          {multiCurrencySummaries.usd.avgBuyPrice > 0
-                            ? `$${multiCurrencySummaries.usd.avgBuyPrice.toFixed(2)}`
-                            : '—'}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-emerald-700">
-                          {multiCurrencySummaries.usd.totalBuyQty.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-emerald-800">
-                          ${multiCurrencySummaries.usd.totalBuyConsideration.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td className="py-2.5 px-2 text-right text-slate-600">
-                          <span className="text-[10px] text-slate-400 font-sans mr-0.5">Avg</span>
-                          {multiCurrencySummaries.usd.avgSellPrice > 0
-                            ? `$${multiCurrencySummaries.usd.avgSellPrice.toFixed(2)}`
-                            : '—'}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-rose-700">
-                          {multiCurrencySummaries.usd.totalSellQty.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-rose-800">
-                          ${multiCurrencySummaries.usd.totalSellConsideration.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-sans">
-                          <div className="flex flex-col items-end">
+                          <td
+                            colSpan={activeMetadataCols.length + 1}
+                            className={`py-2.5 px-3 uppercase tracking-wider font-bold font-sans ${labelColor}`}
+                          >
+                            {entry.currency} Sub-Total ({sub.count}{' '}
+                            {sub.count === 1 ? 'trade' : 'trades'})
+                          </td>
+                          {/* BUY Price & Qty intentionally omitted for multi-symbol currency sub-totals */}
+                          <td className="py-2.5 px-2 text-right"></td>
+                          <td className="py-2.5 px-2 text-right"></td>
+                          <td className="py-2.5 px-2 text-right font-bold text-emerald-800">
+                            {prefix}
+                            {sub.totalBuyConsideration.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                          {/* SELL Price & Qty intentionally omitted for multi-symbol currency sub-totals */}
+                          <td className="py-2.5 px-2 text-right"></td>
+                          <td className="py-2.5 px-2 text-right"></td>
+                          <td className="py-2.5 px-2 text-right font-bold text-rose-800">
+                            {prefix}
+                            {sub.totalSellConsideration.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-sans">
                             <span className="text-[11px] font-semibold text-slate-700">
                               Realized:{' '}
                               <span
                                 className={
-                                  multiCurrencySummaries.usd.realizedPnL >= 0
+                                  sub.realizedPnL >= 0
                                     ? 'text-emerald-700 font-bold'
                                     : 'text-rose-700 font-bold'
                                 }
                               >
-                                {multiCurrencySummaries.usd.realizedPnL >= 0
-                                  ? `+$${multiCurrencySummaries.usd.realizedPnL.toLocaleString(undefined, {
+                                {sub.realizedPnL >= 0
+                                  ? `+${prefix}${sub.realizedPnL.toLocaleString(undefined, {
                                       minimumFractionDigits: 2,
                                       maximumFractionDigits: 2,
                                     })}`
-                                  : `-$${Math.abs(multiCurrencySummaries.usd.realizedPnL).toLocaleString(undefined, {
+                                  : `-${prefix}${Math.abs(sub.realizedPnL).toLocaleString(undefined, {
                                       minimumFractionDigits: 2,
                                       maximumFractionDigits: 2,
                                     })}`}
                               </span>
                             </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
-                              Net Bal:{' '}
-                              {multiCurrencySummaries.usd.netBalance > 0
-                                ? `+${multiCurrencySummaries.usd.netBalance.toLocaleString()}`
-                                : multiCurrencySummaries.usd.netBalance.toLocaleString()}{' '}
-                              shs
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-2"></td>
-                      </tr>
-                    )}
+                          </td>
+                          <td className="py-2.5 px-2"></td>
+                        </tr>
+                      );
+                    })}
 
-                    {/* Row 2: SGD Subtotal */}
-                    {multiCurrencySummaries.sgd.count > 0 && (
-                      <tr className="bg-sky-50/40 border-t border-slate-200 text-xs text-slate-800 font-mono">
-                        <td
-                          colSpan={activeMetadataCols.length + 1}
-                          className="py-2.5 px-3 uppercase tracking-wider font-bold font-sans text-blue-900"
-                        >
-                          SGD Sub-Total ({multiCurrencySummaries.sgd.count}{' '}
-                          {multiCurrencySummaries.sgd.count === 1 ? 'trade' : 'trades'})
-                        </td>
-                        <td className="py-2.5 px-2 text-right text-slate-600">
-                          <span className="text-[10px] text-slate-400 font-sans mr-0.5">Avg</span>
-                          {multiCurrencySummaries.sgd.avgBuyPrice > 0
-                            ? `S$${multiCurrencySummaries.sgd.avgBuyPrice.toFixed(2)}`
-                            : '—'}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-emerald-700">
-                          {multiCurrencySummaries.sgd.totalBuyQty.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-emerald-800">
-                          S${multiCurrencySummaries.sgd.totalBuyConsideration.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td className="py-2.5 px-2 text-right text-slate-600">
-                          <span className="text-[10px] text-slate-400 font-sans mr-0.5">Avg</span>
-                          {multiCurrencySummaries.sgd.avgSellPrice > 0
-                            ? `S$${multiCurrencySummaries.sgd.avgSellPrice.toFixed(2)}`
-                            : '—'}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-rose-700">
-                          {multiCurrencySummaries.sgd.totalSellQty.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 px-2 text-right font-bold text-rose-800">
-                          S${multiCurrencySummaries.sgd.totalSellConsideration.toLocaleString(undefined, {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-sans">
-                          <div className="flex flex-col items-end">
-                            <span className="text-[11px] font-semibold text-slate-700">
-                              Realized:{' '}
-                              <span
-                                className={
-                                  multiCurrencySummaries.sgd.realizedPnL >= 0
-                                    ? 'text-emerald-700 font-bold'
-                                    : 'text-rose-700 font-bold'
-                                }
-                              >
-                                {multiCurrencySummaries.sgd.realizedPnL >= 0
-                                  ? `+S$${multiCurrencySummaries.sgd.realizedPnL.toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}`
-                                  : `-S$${Math.abs(multiCurrencySummaries.sgd.realizedPnL).toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}`}
-                              </span>
-                            </span>
-                            <span className="text-[10px] text-slate-500 font-mono">
-                              Net Bal:{' '}
-                              {multiCurrencySummaries.sgd.netBalance > 0
-                                ? `+${multiCurrencySummaries.sgd.netBalance.toLocaleString()}`
-                                : multiCurrencySummaries.sgd.netBalance.toLocaleString()}{' '}
-                              shs
-                            </span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 px-2"></td>
-                      </tr>
-                    )}
-
-                    {/* Row 3: Consolidated Total (USD) */}
-                    <tr className="bg-slate-100 border-t-2 border-slate-400 text-xs text-slate-900 font-mono font-bold">
+                    {/* Consolidated Grand Total (USD) */}
+                    <tr
+                      data-testid="grand-total-row"
+                      className="bg-slate-100 border-t-2 border-slate-400 text-xs text-slate-900 font-mono font-bold"
+                    >
                       <td
                         colSpan={activeMetadataCols.length + 1}
                         className="py-3 px-3 uppercase tracking-wider font-bold font-sans text-slate-900"
                       >
                         <div className="flex items-center gap-2">
-                          <span>Grand Total ({multiCurrencySummaries.consolidated.count} trades)</span>
+                          <span>
+                            Grand Total ({multiCurrencySummaries.consolidated.count}{' '}
+                            {multiCurrencySummaries.consolidated.count === 1 ? 'trade' : 'trades'})
+                          </span>
                           <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded font-mono uppercase">
                             Consolidated USD
                           </span>
                         </div>
                       </td>
-                      <td className="py-3 px-2 text-right text-slate-400">—</td>
-                      <td className="py-3 px-2 text-right font-bold text-emerald-700">
-                        {multiCurrencySummaries.consolidated.totalBuyQty.toLocaleString()}
-                      </td>
+                      {/* BUY Price & Qty intentionally omitted for multi-symbol grand total */}
+                      <td className="py-3 px-2 text-right"></td>
+                      <td className="py-3 px-2 text-right"></td>
                       <td className="py-3 px-2 text-right font-bold text-emerald-800">
                         ${multiCurrencySummaries.consolidated.totalBuyConsiderationUSD.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </td>
-                      <td className="py-3 px-2 text-right text-slate-400">—</td>
-                      <td className="py-3 px-2 text-right font-bold text-rose-700">
-                        {multiCurrencySummaries.consolidated.totalSellQty.toLocaleString()}
-                      </td>
+                      {/* SELL Price & Qty intentionally omitted for multi-symbol grand total */}
+                      <td className="py-3 px-2 text-right"></td>
+                      <td className="py-3 px-2 text-right"></td>
                       <td className="py-3 px-2 text-right font-bold text-rose-800">
                         ${multiCurrencySummaries.consolidated.totalSellConsiderationUSD.toLocaleString(undefined, {
                           minimumFractionDigits: 2,
@@ -1997,35 +1935,26 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                         })}
                       </td>
                       <td className="py-3 px-3 text-right font-sans">
-                        <div className="flex flex-col items-end">
-                          <span className="text-[11px] font-semibold text-slate-800">
-                            Realized:{' '}
-                            <span
-                              className={
-                                multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
-                                  ? 'text-emerald-700 font-bold'
-                                  : 'text-rose-700 font-bold'
-                              }
-                            >
-                              {multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
-                                ? `+$${multiCurrencySummaries.consolidated.realizedPnLUSD.toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}`
-                                : `-$${Math.abs(multiCurrencySummaries.consolidated.realizedPnLUSD).toLocaleString(undefined, {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2,
-                                  })}`}
-                            </span>
+                        <span className="text-[11px] font-semibold text-slate-800">
+                          Realized:{' '}
+                          <span
+                            className={
+                              multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
+                                ? 'text-emerald-700 font-bold'
+                                : 'text-rose-700 font-bold'
+                            }
+                          >
+                            {multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
+                              ? `+$${multiCurrencySummaries.consolidated.realizedPnLUSD.toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`
+                              : `-$${Math.abs(multiCurrencySummaries.consolidated.realizedPnLUSD).toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}`}
                           </span>
-                          <span className="text-[10px] text-slate-500 font-mono font-normal">
-                            Net Bal:{' '}
-                            {multiCurrencySummaries.consolidated.netBalance > 0
-                              ? `+${multiCurrencySummaries.consolidated.netBalance.toLocaleString()}`
-                              : multiCurrencySummaries.consolidated.netBalance.toLocaleString()}{' '}
-                            shs
-                          </span>
-                        </div>
+                        </span>
                       </td>
                       <td className="py-3 px-2"></td>
                     </tr>

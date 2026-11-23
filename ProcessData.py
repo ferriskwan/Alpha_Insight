@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import logging
+import math
 import json
 import csv
 from typing import Dict, Any, Optional, Union, List
@@ -193,6 +194,14 @@ def insert_EODData(connection: psycopg2.extensions.connection, data: Dict[str, A
             logger.warning("[ProcessData.py].insert_EODData(): Skipping invalid row %s: %s", row, exc)
             continue
 
+        if math.isnan(close_price) or close_price <= 0:
+            logger.warning(
+                "[ProcessData.py].insert_EODData(): Skipping non-positive/NaN close for %s on %s: %s",
+                symbol,
+                timestamp,
+                close_price,
+            )
+            continue
         logger.debug("[ProcessData.py].insert_EODData(): Inserting row for symbol %s: %s", symbol, row)
         values.append((symbol, timestamp, open_price, high_price, low_price, close_price, volume))
 

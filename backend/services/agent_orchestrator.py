@@ -43,11 +43,9 @@ def get_supported_models() -> list[ModelOptionItem]:
     default_gemini = settings.gemini_default_model or "gemini-4-argon"
     catalog: list[tuple[str, str, str]] = [
         ("gemini-4-argon", "Gemini 4 Argon (Default Committee Model)", "gemini"),
+        ("gemini-4-neon", "Gemini 4 Neon", "gemini"),
         ("gemini-4-carbon", "Gemini 4 Carbon", "gemini"),
         ("gemini-4-hydrogen", "Gemini 4 Hydrogen", "gemini"),
-        ("gemini-3.8-flash", "Gemini 3.8 Flash", "gemini"),
-        ("gemini-2.5-pro", "Gemini 2.5 Pro", "gemini"),
-        ("gemini-2.5-flash", "Gemini 2.5 Flash", "gemini"),
         ("kimi-k2-0711-preview", "Moonshot Kimi K2", "kimi"),
     ]
     return [

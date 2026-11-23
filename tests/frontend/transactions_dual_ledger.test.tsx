@@ -126,7 +126,7 @@ describe('TransactionsView Dual Ledger & Drag-and-Drop Grouping (UAT Specificati
 
     // Trade 2 SELL qty 4,000 and consideration $10,000.00
     expect(screen.getAllByText('4,000').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('$10,000.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('S$10,000.00').length).toBeGreaterThanOrEqual(1);
   });
 
   it('computes sub-aggregation PnL for Long position (5E2.SI)', async () => {
@@ -146,8 +146,8 @@ describe('TransactionsView Dual Ledger & Drag-and-Drop Grouping (UAT Specificati
     // Closed Qty = 4,000; Realized PnL = 4,000 * ($2.50 - $2.00) = +$2,000.00
     // Unrealized PnL = 6,000 * ($2.80 - $2.00) = 6,000 * $0.80 = +$4,800.00
     expect(await screen.findByText('+6,000 shs')).toBeInTheDocument();
-    expect(screen.getAllByText('+$2,000.00').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText('+$4,800.00')).toBeInTheDocument();
+    expect(screen.getAllByText('+S$2,000.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('+S$4,800.00')).toBeInTheDocument();
   });
 
   it('computes bidirectional sub-aggregation PnL for Short position (SHORTCO)', async () => {

@@ -240,6 +240,7 @@ export interface SiteMapCreateRequest {
 }
 
 export interface SiteMapUpdateRequest {
+  parent_id?: number | null;
   label?: string;
   route?: string;
   icon?: string | null;
@@ -411,6 +412,25 @@ export interface Chart4DailyPnLDrawdown {
   highWaterMark: number;
 }
 
+export interface PortfolioTradeAnnotation {
+  date: string;
+  symbol: string;
+  buysell: string;
+  quantity: number;
+  price: number;
+  currency: string;
+  remarks: string;
+}
+
+export interface PortfolioCapitalAnnotation {
+  date: string;
+  transtype: string;
+  amount: number;
+  currency: string;
+  broker: string;
+  remarks: string;
+}
+
 export interface PortfolioOverviewResponse {
   parameters?: PortfolioOverviewParameters;
   kpis: PortfolioOverviewKPIs;
@@ -420,6 +440,8 @@ export interface PortfolioOverviewResponse {
   chart2_cumulative_pnl: Chart2CumulativePnL[];
   chart3_asset_allocation: Chart3AssetAllocation[];
   chart4_daily_pnl_drawdown: Chart4DailyPnLDrawdown[];
+  trade_annotations?: PortfolioTradeAnnotation[];
+  capital_annotations?: PortfolioCapitalAnnotation[];
 }
 
 export interface WatchlistEnrichedItem {

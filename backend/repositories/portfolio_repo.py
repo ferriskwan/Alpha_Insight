@@ -16,6 +16,7 @@ from backend.db.models import (
     Position,
     Trade,
     TransCost,
+    Watchlist,
 )
 from backend.repositories.market_repo import get_latest_fx_rates
 from backend.repositories.ref_data_repo import get_default_currency
@@ -952,14 +953,17 @@ def get_portfolio_4chart_overview(
                 by_sym_dates[sym] = {}
                 by_sym_cost[sym] = {}
             qty = _clean_float(pr.quantity, 0.0)
-            close = _clean_float(pr.eodprice, 0.0)
+            raw_close = pr.eodprice
+            if raw_close is None or (isinstance(raw_close, float) and math.isnan(raw_close)) or float(raw_close) <= 0:
+                continue
+            close = float(raw_close)
             avg = _clean_float(pr.avgprice, 0.0)
             d_key = pr.tradedate.isoformat()
             by_sym_dates[sym][d_key] = qty * (close - avg)
             by_sym_cost[sym][d_key] = qty * avg
 
         # Select top active stocks (up to 5)
-        top_symbols = sorted(by_sym_dates.keys(), key=lambda s: len(by_sym_dates[s]), reverse=True)[:5]
+        top_symbols = sorted(by_sym_dates.keys())
         for s in top_symbols:
             s_series = []
             last_pnl = 0.0
@@ -1071,6 +1075,61 @@ def get_portfolio_4chart_overview(
 
     period_ret = ((latest_eq - first_eq) / first_eq * 100.0) if first_eq > 0 else 0.0
 
+    # Trade and Capital event annotations within the active date window
+    trade_annotations: list[dict[str, Any]] = []
+    capital_annotations: list[dict[str, Any]] = []
+    if perf_series:
+        win_start = perf_series[0]["date"]
+        win_end = perf_series[-1]["date"]
+
+        wl_rows = db.scalars(select(Watchlist)).all()
+        wl_ccy_map = {w.symbol.strip().upper(): w.currency.strip().upper() for w in wl_rows if w.symbol and w.currency}
+
+        t_rows = get_trades(db, user_id=user_id)
+        if not t_rows and user_id != 1:
+            t_rows = get_trades(db, user_id=1)
+        for tr in t_rows:
+            if not tr.tradedate:
+                continue
+            t_dt_str = tr.tradedate.date().isoformat() if hasattr(tr.tradedate, "date") else str(tr.tradedate)[:10]
+            if win_start <= t_dt_str <= win_end:
+                sym_u = (tr.symbol or "").strip().upper()
+                t_ccy = wl_ccy_map.get(sym_u) or (
+                    "SGD" if sym_u.endswith(".SI") else ("HKD" if sym_u.endswith(".HK") else "USD")
+                )
+                trade_annotations.append(
+                    {
+                        "date": t_dt_str,
+                        "symbol": sym_u,
+                        "buysell": str(tr.buysell or "B").strip().upper(),
+                        "quantity": _clean_float(tr.quantity, 0.0),
+                        "price": _clean_float(tr.price, 0.0),
+                        "currency": t_ccy,
+                        "remarks": tr.remarks or "",
+                    }
+                )
+        trade_annotations.sort(key=lambda item: (item["date"], item["symbol"]))
+
+        c_rows = get_capital(db, user_id=user_id)
+        if not c_rows and user_id != 1:
+            c_rows = get_capital(db, user_id=1)
+        for cp in c_rows:
+            if not cp.date:
+                continue
+            c_dt_str = cp.date.isoformat() if hasattr(cp.date, "isoformat") else str(cp.date)[:10]
+            if win_start <= c_dt_str <= win_end:
+                capital_annotations.append(
+                    {
+                        "date": c_dt_str,
+                        "transtype": str(cp.transtype or "D").strip().upper(),
+                        "amount": _clean_float(cp.amount, 0.0),
+                        "currency": (cp.currency or target_currency).strip().upper(),
+                        "broker": cp.broker or "",
+                        "remarks": cp.remarks or "",
+                    }
+                )
+        capital_annotations.sort(key=lambda item: item["date"])
+
     kpis_dict = {
         "netAssetValue": round(latest_eq, 2),
         "cashBalance": _clean_float(summary.get("cashBalance", 0.0)),
@@ -1108,4 +1167,6 @@ def get_portfolio_4chart_overview(
         "chart2_cumulative_pnl": chart2_data,
         "chart3_asset_allocation": chart3_data,
         "chart4_daily_pnl_drawdown": chart4_data,
+        "trade_annotations": trade_annotations,
+        "capital_annotations": capital_annotations,
     }

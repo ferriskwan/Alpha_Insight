@@ -1,0 +1,29 @@
+{
+  "captured_at": "2026-11-21T07:03:34.856380+00:00",
+  "dbname": "4leafclover",
+  "table_count": 16,
+  "alembic_version": null,
+  "sysvalue_keys": [
+    "ENV",
+    "GLOBAL_STARTDATE",
+    "GLOBAL_TODAY"
+  ],
+  "tables": {
+    "capital": 33,
+    "daily_margin_interest": 5504,
+    "daily_portfolio_summary": 5502,
+    "eoddata": 12877,
+    "exchange_rate": 972,
+    "margin_interest_rate": 2,
+    "objective": 0,
+    "position": 1847,
+    "schema_migrations": 2,
+    "sysvalue": 3,
+    "tickdata": 276553,
+    "trade": 61,
+    "user_roles": 3,
+    "user_settings": 0,
+    "users": 2,
+    "watchlist": 28
+  }
+}

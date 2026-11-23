@@ -208,6 +208,17 @@ def fetch_and_store_tick(api_url: str, headers: dict[str, str], global_today: st
             continue
 
 
+def validate_runtime_api_url(api_url: str) -> None:
+    """Fail fast if running inside a Cloud Run Job while API_URL still points to localhost."""
+    if os.getenv("CLOUD_RUN_JOB"):
+        normalized = api_url.strip().lower()
+        if "localhost" in normalized or "127.0.0.1" in normalized:
+            raise RuntimeError(
+                f"Invalid API_URL='{api_url}' inside Cloud Run Job '{os.getenv('CLOUD_RUN_JOB')}'. "
+                "Set API_URL to the deployed Cloud Run web service URL."
+            )
+
+
 def main() -> None:
     """Execute complete daily batch pipeline with job execution logging."""
     load_dotenv()
@@ -215,6 +226,7 @@ def main() -> None:
 
     api_url = settings.api_url
     api_key = settings.api_key
+    validate_runtime_api_url(api_url)
     headers = {"X-API-KEY": api_key}
 
     logger.info("[main.py]: Start of program client (Target: %s)", api_url)
@@ -301,6 +313,12 @@ def main() -> None:
                 db_session.close()
             except Exception:
                 pass
+        try:
+            from backend.db.session import dispose_engine
+
+            dispose_engine()
+        except Exception:
+            pass
         logger.info("[main.py]: Program execution completed")
 
 
