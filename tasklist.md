@@ -83,3 +83,12 @@
     - Tier 1: `uv run ruff check` & `uv run ruff format --check` passed cleanly on 128 files.
     - Tier 2: `uv run mypy` passed on 64 source files with 0 errors.
     - Tier 3: Backend pytest passed 92/92 tests; Frontend vitest passed 86/86 tests across 15 suites.
+- [x] Task 13: EOD & Tick Data UpdateTimestamp Default & Ingestion Auto-Population <!-- id: 13 -->
+  - Implementation:
+    - Updated `upsert_eod_data` and `upsert_tick_data` in `backend/repositories/market_repo.py` to populate `record.updatetimestamp = datetime.now()`.
+    - Created Alembic migration `0010_eoddata_tickdata_default_updatetimestamp.py` setting `DEFAULT CURRENT_TIMESTAMP` on `public.eoddata` and `public.tickdata` and backfilling `NULL` rows.
+    - Upgraded `4leafclover_dev` schema via `uv run alembic upgrade head`.
+  - Verification:
+    - Tier 1: `uv run ruff check .` & `uv run ruff format --check .` (0 errors across 143 files).
+    - Tier 2: `uv run mypy --explicit-package-bases .` (0 errors across 86 source files).
+    - Tier 3: `uv run pytest` (125/125 passed); `npm.cmd test` (17/17 test suites, 94/94 passed).
