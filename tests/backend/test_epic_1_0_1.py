@@ -27,6 +27,8 @@ def test_supported_models_includes_gemini_4_neon_and_excludes_pre_v4() -> None:
     assert "gemini-4-neon" in ids
     assert "gemini-4-argon" in ids
     assert "kimi-k2-0711-preview" in ids
+    neon = next(m for m in models if m.id == "gemini-4-neon")
+    assert neon.is_default is True
     for removed in ("gemini-3.8-flash", "gemini-2.5-pro", "gemini-2.5-flash"):
         assert removed not in ids
 

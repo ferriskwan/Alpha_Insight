@@ -114,7 +114,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         active_route: resolvedContext.activeRoute || currentPath,
         displayed_context: (resolvedContext.data || {}) as Record<string, any>,
         provider: 'gemini',
-        model: 'gemini-4-argon',
+        model: 'gemini-4-neon',
       });
       setChatMessages((prev) => [...prev, { role: 'assistant', content: res.reply }]);
     } catch (err: unknown) {
@@ -307,7 +307,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         <FloatingAgentChat
           open={agenticAnalystOpen}
           onClose={() => setAgenticAnalystOpen(false)}
-          model="gemini-4-argon"
+          model="gemini-4-neon"
           displayedContext={resolvedContext}
           messages={chatMessages}
           loading={chatLoading}

@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     )
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     gemini_default_model: str = Field(
-        default="gemini-4-argon",
+        default="gemini-4-neon",
         alias="GEMINI_DEFAULT_MODEL",
     )
     kimi_api_key: str = Field(default="", alias="KIMI_API_KEY")

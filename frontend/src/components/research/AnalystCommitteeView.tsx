@@ -70,15 +70,15 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
   const [openPositionSymbols, setOpenPositionSymbols] = useState<Set<string>>(new Set());
   const [models, setModels] = useState<ModelOptionItem[]>([
     {
-      id: 'gemini-4-argon',
-      label: 'Gemini 4 Argon (Default Committee Model)',
+      id: 'gemini-4-neon',
+      label: 'Gemini 4 Neon (Default Committee Model)',
       provider: 'gemini',
       is_default: true,
     },
   ]);
 
   const [selectedSymbol, setSelectedSymbol] = useState<string>(initialSymbol || '');
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-argon');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-neon');
   const [lookbackRuns, setLookbackRuns] = useState<number>(3);
   const [activeTab, setActiveTab] = useState<AnalystRoleType>('executive_summary');
   const [chartMode, setChartMode] = useState<'multiday' | 'intraday'>('multiday');

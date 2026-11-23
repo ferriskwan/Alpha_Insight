@@ -38,12 +38,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_supported_models() -> list[ModelOptionItem]:
-    """Return available AI models with gemini-4-argon as default."""
+    """Return available AI models with gemini-4-neon as default."""
     settings = get_settings()
-    default_gemini = settings.gemini_default_model or "gemini-4-argon"
+    default_gemini = settings.gemini_default_model or "gemini-4-neon"
     catalog: list[tuple[str, str, str]] = [
-        ("gemini-4-argon", "Gemini 4 Argon (Default Committee Model)", "gemini"),
-        ("gemini-4-neon", "Gemini 4 Neon", "gemini"),
+        ("gemini-4-neon", "Gemini 4 Neon (Default Committee Model)", "gemini"),
+        ("gemini-4-argon", "Gemini 4 Argon", "gemini"),
         ("gemini-4-carbon", "Gemini 4 Carbon", "gemini"),
         ("gemini-4-hydrogen", "Gemini 4 Hydrogen", "gemini"),
         ("kimi-k2-0711-preview", "Moonshot Kimi K2", "kimi"),
