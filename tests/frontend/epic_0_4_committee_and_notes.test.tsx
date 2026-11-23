@@ -152,8 +152,8 @@ describe('Epic 0.4 Frontend: AnalystCommitteeView, InvestmentNotesView & Floatin
     ]);
     vi.spyOn(apiClient, 'getCommitteeModels').mockResolvedValue([
       {
-        id: 'gemini-4-argon',
-        label: 'Gemini 4 Argon (Default Committee Model)',
+        id: 'gemini-4-neon',
+        label: 'Gemini 4 Neon (Default Committee Model)',
         provider: 'gemini',
         is_default: true,
       },
@@ -426,7 +426,7 @@ describe('Epic 0.4 Frontend: AnalystCommitteeView, InvestmentNotesView & Floatin
       <FloatingAgentChat
         open={true}
         onClose={handleClose}
-        model="gemini-4-argon"
+        model="gemini-4-neon"
         displayedContext={{
           symbol: 'AAPL',
           activeRoute: '/research/committee',
@@ -456,7 +456,7 @@ describe('Epic 0.4 Frontend: AnalystCommitteeView, InvestmentNotesView & Floatin
     expect(screen.getByTestId('floating-agent-chat')).toBeInTheDocument();
     expect(screen.getByText('Chat Session — Agentic Analyst')).toBeInTheDocument();
     expect(screen.getByTestId('chat-resize-handle')).toBeInTheDocument();
-    expect(screen.getByText('gemini-4-argon')).toBeInTheDocument();
+    expect(screen.getByText('gemini-4-neon')).toBeInTheDocument();
     expect(screen.getByText('Active Context: AAPL')).toBeInTheDocument();
     expect(screen.getByText('Committee Run #18 (4 Analysts + Exec Summary)')).toBeInTheDocument();
     expect(
@@ -476,8 +476,8 @@ describe('Epic 0.4 Frontend: AnalystCommitteeView, InvestmentNotesView & Floatin
   it('renders MacroeconomicsView with reusable AnalystOutputPanel, Verified Grounding Sources & Citations, and Reference in Note', async () => {
     vi.spyOn(apiClient, 'getCommitteeModels').mockResolvedValue([
       {
-        id: 'gemini-4-argon',
-        label: 'Gemini 4 Argon (Default Committee Model)',
+        id: 'gemini-4-neon',
+        label: 'Gemini 4 Neon (Default Committee Model)',
         provider: 'gemini',
         is_default: true,
       },

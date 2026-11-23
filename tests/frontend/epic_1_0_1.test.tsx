@@ -184,8 +184,8 @@ describe('Epic 1.0.1 Frontend Verification', () => {
 
   it('Item 4: MacroeconomicsView renders backdated run selector and loads selected run', async () => {
     mockApi.getCommitteeModels.mockResolvedValue([
-      { id: 'gemini-4-argon', label: 'Gemini 4 Argon', provider: 'gemini', is_default: true },
-      { id: 'gemini-4-neon', label: 'Gemini 4 Neon', provider: 'gemini', is_default: false },
+      { id: 'gemini-4-neon', label: 'Gemini 4 Neon', provider: 'gemini', is_default: true },
+      { id: 'gemini-4-argon', label: 'Gemini 4 Argon', provider: 'gemini', is_default: false },
     ]);
     mockApi.getLatestMacroWorkbench.mockResolvedValue({
       run: {
