@@ -243,3 +243,47 @@ def test_update_watchlist_item_repo_and_endpoint() -> None:
     assert new is not None
     assert new.name == "Corning Incorporated"
     db.close()
+
+
+def test_upsert_eod_and_tick_data_populates_updatetimestamp() -> None:
+    """Item 10: upsert_eod_data and upsert_tick_data populate updatetimestamp."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+
+    from sqlalchemy import select
+
+    from backend.db.models import EodData, TickData
+    from backend.repositories.market_repo import upsert_eod_data, upsert_tick_data
+
+    # Test EOD upsert
+    bars_eod = [{"date": "2026-11-20", "open": 100.0, "high": 105.0, "low": 98.0, "close": 102.0, "volume": 1000.0}]
+    count = upsert_eod_data(db, "GLW", bars_eod)
+    assert count == 1
+
+    eod_record = db.scalar(select(EodData).where(EodData.symbol == "GLW", EodData.date == date(2026, 11, 20)))
+    assert eod_record is not None
+    assert eod_record.updatetimestamp is not None
+    assert isinstance(eod_record.updatetimestamp, datetime)
+
+    # Test Tick upsert
+    bars_tick = [
+        {
+            "datetime": "2026-11-20T10:00:00",
+            "open": 100.0,
+            "high": 105.0,
+            "low": 98.0,
+            "close": 102.0,
+            "volume": 1000.0,
+        }
+    ]
+    tick_count = upsert_tick_data(db, "GLW", "5m", bars_tick)
+    assert tick_count == 1
+
+    tick_record = db.scalar(select(TickData).where(TickData.symbol == "GLW", TickData.interval == "5m"))
+    assert tick_record is not None
+    assert tick_record.updatetimestamp is not None
+    assert isinstance(tick_record.updatetimestamp, datetime)
+
+    db.close()

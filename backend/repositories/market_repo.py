@@ -128,6 +128,7 @@ def upsert_eod_data(db: Session, symbol: str, bars: list[dict[str, Any]]) -> int
         record.low = float(b["low"]) if b.get("low") is not None else None
         record.close = float(b["close"]) if b.get("close") is not None else None
         record.volume = float(b["volume"]) if b.get("volume") is not None else None
+        record.updatetimestamp = datetime.now()
         count += 1
 
     db.commit()
@@ -191,6 +192,7 @@ def upsert_tick_data(
         record.low = float(b["low"]) if b.get("low") is not None else None
         record.close = float(b["close"]) if b.get("close") is not None else None
         record.volume = float(b["volume"]) if b.get("volume") is not None else None
+        record.updatetimestamp = datetime.now()
         count += 1
 
     db.commit()
