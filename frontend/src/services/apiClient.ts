@@ -417,6 +417,20 @@ export const apiClient = {
     });
   },
 
+  async updateWatchlistItem(
+    symbol: string,
+    payload: {
+      name?: string;
+      watchlistname?: string;
+      original_watchlistname?: string;
+    }
+  ): Promise<{ status: string; item: any }> {
+    return fetchJson<{ status: string; item: any }>(`/api/v1/watchlist/items/`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
   async removeWatchlistItem(symbol: string, watchlistName: string = 'Default'): Promise<{ status: string; symbol: string }> {
     return fetchJson<{ status: string; symbol: string }>(
       `/api/v1/watchlist/items/${encodeURIComponent(symbol)}?watchlistName=${encodeURIComponent(watchlistName)}`,

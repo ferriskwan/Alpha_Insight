@@ -6,6 +6,7 @@ import { PortfolioOverview } from '../../frontend/src/components/portfolio/Portf
 import { MacroeconomicsView } from '../../frontend/src/components/research/MacroeconomicsView';
 import { AnalystCommitteeView } from '../../frontend/src/components/research/AnalystCommitteeView';
 import { SiteMapAdmin, buildSortedHierarchyTree } from '../../frontend/src/components/admin/SiteMapAdmin';
+import { WatchlistView } from '../../frontend/src/components/portfolio/WatchlistView';
 import apiClient from '../../frontend/src/services/apiClient';
 import { SiteMapNode } from '../../frontend/src/types/api';
 
@@ -27,6 +28,9 @@ vi.mock('../../frontend/src/services/apiClient', () => ({
     getLatestMacroWorkbench: vi.fn(),
     getAdminSitemap: vi.fn(),
     updateSiteMapNode: vi.fn(),
+    getWatchlistLists: vi.fn(),
+    updateWatchlistItem: vi.fn(),
+    removeWatchlistItem: vi.fn(),
   },
 }));
 
@@ -317,6 +321,62 @@ describe('Epic 1.0.1 Frontend Verification', () => {
       expect(posOpts).toEqual(['0700.HK', 'GLW']);
       expect(otherOpts).toEqual(['AAPL', 'NVDA']);
       expect(idxOpts).toEqual(['^DJI', '^SPX']);
+    });
+  });
+
+  it('Item 8 & Item 9: WatchlistView renders 3-tier grouping, edit pencil icons, edit modal, and in-modal deletion', async () => {
+    mockApi.getWatchlistItems.mockResolvedValue([
+      { symbol: '^SPX', name: 'S&P 500', watchlistname: 'Index', lastPrice: 5000, change: 10, changePct: 0.2, dayHigh: 5010, dayLow: 4990, volume: 1000 },
+      { symbol: 'GLW', name: 'Corning Inc', watchlistname: 'Holding', lastPrice: 100, change: 1, changePct: 1, dayHigh: 101, dayLow: 99, volume: 2000 },
+      { symbol: 'AA', name: 'Alcoa Corp', watchlistname: 'Watchlist', lastPrice: 35, change: -1, changePct: -2.8, dayHigh: 36, dayLow: 34, volume: 500 },
+      { symbol: 'D05.SI', name: 'DBS Bank', watchlistname: 'Holding', lastPrice: 65, change: 0.5, changePct: 0.77, dayHigh: 66, dayLow: 64, volume: 800 },
+      { symbol: '^DJI', name: 'Dow Jones', watchlistname: 'Index', lastPrice: 40000, change: -50, changePct: -0.1, dayHigh: 40100, dayLow: 39900, volume: 1500 },
+    ]);
+    mockApi.getWatchlistLists.mockResolvedValue(['Holding', 'Index', 'Watchlist']);
+    mockApi.getPositions.mockResolvedValue([
+      { user_id: 1, symbol: 'GLW', quantity: 1200, avgprice: 177, eodprice: 106, investment: true },
+      { user_id: 1, symbol: 'D05.SI', quantity: 500, avgprice: 60, eodprice: 65, investment: true },
+    ]);
+    mockApi.updateWatchlistItem.mockResolvedValue({ status: 'success', item: {} });
+    mockApi.removeWatchlistItem.mockResolvedValue({ status: 'success', symbol: 'GLW' });
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<WatchlistView />);
+
+    // 1. Verify 3-tier section headers render
+    expect(await screen.findByText('My Positions')).toBeTruthy();
+    expect(screen.getByText('Other Stocks')).toBeTruthy();
+    expect(screen.getByText('Indexes')).toBeTruthy();
+
+    // 2. Verify Pencil edit icon exists instead of trash icon
+    const editBtn = screen.getByTestId('edit-watchlist-GLW');
+    expect(editBtn).toBeTruthy();
+
+    // 3. Click Pencil icon to open Edit modal
+    fireEvent.click(editBtn);
+
+    expect(await screen.findByText('Edit Watchlist Item — GLW')).toBeTruthy();
+    const nameInput = screen.getByDisplayValue('Corning Inc');
+    fireEvent.change(nameInput, { target: { value: 'Corning Incorporated' } });
+
+    // Click Save Changes
+    const saveBtn = screen.getByTestId('save-watchlist-edit-btn');
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(mockApi.updateWatchlistItem).toHaveBeenCalledWith('GLW', expect.objectContaining({
+        name: 'Corning Incorporated',
+      }));
+    });
+
+    // 4. Test In-Modal Deletion
+    fireEvent.click(screen.getByTestId('edit-watchlist-GLW'));
+    const deleteBtn = await screen.findByTestId('delete-watchlist-btn');
+    fireEvent.click(deleteBtn);
+
+    await waitFor(() => {
+      expect(mockApi.removeWatchlistItem).toHaveBeenCalledWith('GLW', 'Holding');
     });
   });
 });

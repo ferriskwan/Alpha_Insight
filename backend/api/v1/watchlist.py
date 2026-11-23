@@ -25,6 +25,7 @@ from backend.repositories.watchlist_repo import (
     get_user_watchlist_names,
     get_watchlist_items,
     remove_watchlist_item,
+    update_watchlist_item,
 )
 from backend.schemas.auth import UserProfileResponse
 from backend.schemas.market import WatchlistDataResponse, WatchlistSymbolItem
@@ -34,6 +35,12 @@ from backend.schemas.transactions import (
     MAX_WATCHLIST_NAME_LEN,
 )
 from backend.services.chart_runner import generate_candlestick_png
+
+
+class WatchlistUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=MAX_SECURITY_NAME_LEN)
+    watchlistname: Optional[str] = Field(default=None, max_length=MAX_WATCHLIST_NAME_LEN)
+    original_watchlistname: Optional[str] = Field(default="Default", max_length=MAX_WATCHLIST_NAME_LEN)
 
 
 class WatchlistAddRequest(BaseModel):
@@ -86,6 +93,36 @@ def add_item_to_watchlist(
         name=payload.name,
         watchlist_name=payload.watchlistname or "Default",
     )
+    return {
+        "status": "success",
+        "item": {
+            "user_id": item.user_id,
+            "symbol": item.symbol,
+            "name": item.name,
+            "watchlistname": item.watchlistname,
+        },
+    }
+
+
+@router.put("/items/{symbol}")
+def update_item_in_watchlist(
+    symbol: str,
+    payload: WatchlistUpdateRequest,
+    user: Optional[UserProfileResponse] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db_session),
+):
+    """Update a ticker's display name or watchlist group."""
+    uid = user.id if user else 1
+    item = update_watchlist_item(
+        db,
+        user_id=uid,
+        symbol=symbol,
+        original_watchlist_name=payload.original_watchlistname or "Default",
+        new_name=payload.name,
+        new_watchlist_name=payload.watchlistname,
+    )
+    if not item:
+        raise HTTPException(status_code=404, detail="Watchlist item not found")
     return {
         "status": "success",
         "item": {

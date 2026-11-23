@@ -170,3 +170,63 @@ def remove_watchlist_item(
         db.commit()
         return True
     return False
+
+
+def update_watchlist_item(
+    db: Session,
+    user_id: int,
+    symbol: str,
+    original_watchlist_name: str = "Default",
+    new_name: Optional[str] = None,
+    new_watchlist_name: Optional[str] = None,
+) -> Optional[Watchlist]:
+    """Update a ticker's display name and/or watchlist group."""
+    clean_sym = symbol.strip().upper()
+    orig_group = original_watchlist_name.strip()
+    target_group = (new_watchlist_name or orig_group).strip()
+
+    stmt = select(Watchlist).where(
+        Watchlist.user_id == user_id,
+        Watchlist.symbol == clean_sym,
+        Watchlist.watchlistname == orig_group,
+    )
+    item = db.scalar(stmt)
+    if not item:
+        # Fallback without matching original group if only one entry exists for symbol
+        alt_stmt = select(Watchlist).where(
+            Watchlist.user_id == user_id,
+            Watchlist.symbol == clean_sym,
+        )
+        item = db.scalar(alt_stmt)
+        if not item:
+            return None
+
+    if target_group != item.watchlistname:
+        # Primary key includes watchlistname, check if target already exists
+        dest = db.scalar(
+            select(Watchlist).where(
+                Watchlist.user_id == user_id,
+                Watchlist.symbol == clean_sym,
+                Watchlist.watchlistname == target_group,
+            )
+        )
+        if dest:
+            if new_name is not None:
+                dest.name = new_name.strip() or clean_sym
+            db.delete(item)
+            db.commit()
+            db.refresh(dest)
+            return dest
+        else:
+            item.watchlistname = target_group
+            if new_name is not None:
+                item.name = new_name.strip() or clean_sym
+            db.commit()
+            db.refresh(item)
+            return item
+    else:
+        if new_name is not None:
+            item.name = new_name.strip() or clean_sym
+        db.commit()
+        db.refresh(item)
+        return item

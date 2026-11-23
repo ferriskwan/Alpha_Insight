@@ -45,3 +45,9 @@
 - [x] **T12**: Perform `spec-orchestrator` + `ui-ux-designer` audit (hardcoding, DRY, architecture, PRD cross-reference) and author `Epics/1.0.1/WALKTHROUGH.md`.
   - All 7 PRD items verified `[UAT PASSED]`; walkthrough written to `Epics/1.0.1/WALKTHROUGH.md`.
 - [x] **T13 (PR & Merge)**: Pre-PR scan verified via `deterministic-resolver`, branch `1.0.1` pushed to GitHub, PR #9 created against `dev`, CI validation gate passed (Tier 1-3), and PR merged into `dev` (`834695a2`). Deploy to Development Cloud Run workflow triggered.
+- [x] **T14 (Item 8 & Item 9 Watchlist Refinement)**:
+  - Added 3-tier grouping & secondary alphabetical sorting in `WatchlistView.tsx` (My Positions, Other Stocks, Indexes) with sub-headers.
+  - Replaced row delete icon with `Pencil` edit icon in `WatchlistView.tsx`.
+  - Added `ModalDialog` for editing watchlist items (display name, group re-assignment) with in-modal `Delete Symbol` action.
+  - Added `update_watchlist_item` in `backend/repositories/watchlist_repo.py`, `PUT /api/v1/watchlist/items/{symbol}` in `backend/api/v1/watchlist.py`, and `updateWatchlistItem` in `frontend/src/services/apiClient.ts`.
+- [x] **T15**: Authored unit tests in `test_epic_1_0_1.py` and `epic_1_0_1.test.tsx`, passed Full CI-Parity Gate (Ruff, Mypy, 124 Pytests, 94 Vitests).

@@ -200,3 +200,46 @@ def test_workflows_configure_daily_jobs_with_api_url_and_api_key() -> None:
     assert "alpha-insight-daily-job-prod" in prod_wf
     assert "API_URL=${WEB_URL}" in prod_wf
     assert "API_KEY=alpha-api-key:latest" in prod_wf
+
+
+def test_update_watchlist_item_repo_and_endpoint() -> None:
+    """Item 9: update_watchlist_item updates display name and transfers between watchlist groups."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    SessionLocal = sessionmaker(bind=engine)
+    db = SessionLocal()
+
+    from sqlalchemy import select
+
+    from backend.repositories.watchlist_repo import add_watchlist_item, update_watchlist_item
+
+    # Add initial item in 'Watchlist'
+    add_watchlist_item(db, user_id=1, symbol="GLW", name="Corning", watchlist_name="Watchlist")
+
+    # Update name and group to 'Holding'
+    updated = update_watchlist_item(
+        db,
+        user_id=1,
+        symbol="GLW",
+        original_watchlist_name="Watchlist",
+        new_name="Corning Incorporated",
+        new_watchlist_name="Holding",
+    )
+    assert updated is not None
+    assert updated.symbol == "GLW"
+    assert updated.name == "Corning Incorporated"
+    assert updated.watchlistname == "Holding"
+
+    # Verify old row under 'Watchlist' no longer exists and new row under 'Holding' exists
+    old = db.scalar(
+        select(Watchlist).where(
+            Watchlist.user_id == 1, Watchlist.symbol == "GLW", Watchlist.watchlistname == "Watchlist"
+        )
+    )
+    assert old is None
+    new = db.scalar(
+        select(Watchlist).where(Watchlist.user_id == 1, Watchlist.symbol == "GLW", Watchlist.watchlistname == "Holding")
+    )
+    assert new is not None
+    assert new.name == "Corning Incorporated"
+    db.close()
