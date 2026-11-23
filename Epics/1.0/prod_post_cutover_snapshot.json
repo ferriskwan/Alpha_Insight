@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-11-21T07:31:57.198211+00:00",
+  "dbname": "4leafclover",
+  "table_count": 28,
+  "alembic_version": [
+    "0009"
+  ],
+  "sysvalue_keys": [
+    "DEFAULT_CURRENCY",
+    "ENV",
+    "GLOBAL_STARTDATE",
+    "GLOBAL_TODAY"
+  ],
+  "tables": {
+    "agent_analyst_outputs": 0,
+    "agent_chat_messages": 0,
+    "agent_committee_runs": 0,
+    "alembic_version": 1,
+    "audit_log": 0,
+    "capital": 33,
+    "daily_margin_interest": 5504,
+    "daily_portfolio_summary": 5502,
+    "eoddata": 12877,
+    "exchange_rate": 972,
+    "investment_note_analyst_links": 0,
+    "investment_notes": 0,
+    "job_execution_log": 0,
+    "margin_interest_rate": 2,
+    "objective": 0,
+    "position": 1847,
+    "ref_chart_settings": 1,
+    "schema_migrations": 2,
+    "site_map": 17,
+    "sysvalue": 4,
+    "tickdata": 276553,
+    "trade": 61,
+    "trans_cost": 0,
+    "user_roles": 3,
+    "user_sessions": 0,
+    "user_settings": 0,
+    "users": 2,
+    "watchlist": 28
+  }
+}

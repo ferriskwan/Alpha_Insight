@@ -38,6 +38,19 @@ def run_mark_to_market():
         raise RuntimeError(f"Database connection failed: {e}")
 
     try:
+        # Step 0a: Self-healing cleanup of invalid EOD and Position rows (NULL, NaN, or <= 0)
+        cursor.execute("DELETE FROM public.eoddata WHERE close IS NULL OR close::text = 'NaN' OR close <= 0;")
+        purged_eod = cursor.rowcount
+        cursor.execute("DELETE FROM public.position WHERE eodprice IS NULL OR eodprice::text = 'NaN' OR eodprice <= 0;")
+        purged_pos = cursor.rowcount
+        if purged_eod or purged_pos:
+            logger.warning(
+                "[run_mark_to_market.py]: Self-healing cleanup removed %d invalid eoddata "
+                "and %d invalid position rows.",
+                purged_eod,
+                purged_pos,
+            )
+
         # Step 0: Determine the start date for position refresh using smart refresh query
         logger.info("[run_mark_to_market.py]: Determining start date for position refresh...")
         smart_query = """

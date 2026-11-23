@@ -89,11 +89,9 @@ describe('TransactionsView Grouping & Aggregation Layer', () => {
     // Default grouping state is tradedate per requirement
     expect(select).toHaveValue('tradedate');
 
-    // Grand total footer should show total trades
+    // Grand total footer should show total trades (irrelevant aggregated quantities omitted per Epic 1.0.1)
     expect(await screen.findByText('Grand Total (3 trades)')).toBeInTheDocument();
-    // Total buy quantity: 200 + 500 = 700; Total sell quantity: 200
-    expect(screen.getAllByText('700').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('200').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByTestId('grand-total-row')).toBeInTheDocument();
   });
 
   it('groups by Symbol with accurate subtotals and accordion toggle capability', async () => {

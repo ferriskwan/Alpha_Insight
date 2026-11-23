@@ -121,6 +121,9 @@ def run_portfolio_summary() -> None:
                         SELECT symbol, MAX(tradedate) as max_date
                         FROM public.position
                         WHERE user_id = %s AND tradedate <= %s
+                          AND eodprice IS NOT NULL
+                          AND eodprice::text != 'NaN'
+                          AND eodprice > 0
                         GROUP BY symbol
                     )
                     SELECT w.currency, p.investment,

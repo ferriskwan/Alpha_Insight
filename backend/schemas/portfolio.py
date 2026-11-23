@@ -77,6 +77,29 @@ class PortfolioChart2Data(BaseModel):
     stocks: dict[str, list[PortfolioStockPnLPoint]] = Field(default_factory=dict)
 
 
+class PortfolioTradeAnnotation(BaseModel):
+    """Executed trade marker annotation for Portfolio Overview charts."""
+
+    date: str
+    symbol: str
+    buysell: str
+    quantity: float = 0.0
+    price: float = 0.0
+    currency: str = "USD"
+    remarks: str = ""
+
+
+class PortfolioCapitalAnnotation(BaseModel):
+    """Capital adjustment marker annotation for Portfolio Overview Chart 1."""
+
+    date: str
+    transtype: str
+    amount: float = 0.0
+    currency: str = "USD"
+    broker: str = ""
+    remarks: str = ""
+
+
 class PortfolioOverviewResponse(BaseModel):
     """Full response for GET /api/v1/portfolio/overview."""
 
@@ -89,6 +112,8 @@ class PortfolioOverviewResponse(BaseModel):
     chart2_cumulative_pnl: list[dict[str, Any]] = Field(default_factory=list)
     chart3_asset_allocation: list[dict[str, Any]] = Field(default_factory=list)
     chart4_daily_pnl_drawdown: list[dict[str, Any]] = Field(default_factory=list)
+    trade_annotations: list[PortfolioTradeAnnotation] = Field(default_factory=list)
+    capital_annotations: list[PortfolioCapitalAnnotation] = Field(default_factory=list)
 
 
 class PortfolioCommentaryItem(BaseModel):
