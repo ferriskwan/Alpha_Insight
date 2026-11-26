@@ -192,3 +192,70 @@ class TestDailyJobPipelineUAT005:
         assert completed_log is not None
         assert completed_log.status == "FAILED"
         assert "429" in (completed_log.error_message or "")
+
+    def test_pulldata_yahoo_sanitizes_timestamp_dates(self) -> None:
+        """Verify pulldata_yahoo strips time components from start and end dates."""
+        import pandas as pd
+
+        import marketdata as md
+
+        mock_df = pd.DataFrame(
+            [{"Open": 100.0, "High": 105.0, "Low": 99.0, "Close": 104.0, "Volume": 5000}],
+            index=pd.to_datetime(["2025-01-02"]),
+        )
+
+        with patch("yfinance.download", return_value=mock_df) as mock_yf:
+            res = md.pulldata_yahoo("XLB", "1d", "2025-01-01T00:00:00", "2026-11-26T00:00:00")
+            assert res is not None
+            assert res["meta"]["start_date"] == "2025-01-01"
+            assert res["meta"]["end_date"] == "2026-11-26"
+            mock_yf.assert_called_once_with(
+                "XLB",
+                start="2025-01-01",
+                end="2026-11-26",
+                interval="1d",
+                multi_level_index=False,
+                progress=False,
+            )
+
+    def test_fetch_and_store_eod_sanitizes_iso_timestamps(self) -> None:
+        """Verify fetch_and_store_eod strips ISO timestamp strings from start and today parameters."""
+        mock_get_resp = MagicMock()
+        mock_get_resp.json.return_value = [{"symbol": "XLB", "start_date": "2025-01-01T00:00:00"}]
+        mock_get_resp.raise_for_status.return_value = None
+
+        mock_post_resp = MagicMock()
+        mock_post_resp.json.return_value = {"status": "ok"}
+        mock_post_resp.raise_for_status.return_value = None
+
+        with (
+            patch("requests.get", return_value=mock_get_resp) as mock_get_fn,
+            patch("requests.post", return_value=mock_post_resp),
+            patch("marketdata.pulldata_yahoo", return_value={"meta": {"symbol": "XLB"}, "values": []}) as mock_pull,
+        ):
+            main.fetch_and_store_eod(
+                api_url="http://test-server:8080",
+                headers={"X-API-KEY": "test-key"},
+                global_startdate="2025-01-01T00:00:00",
+                global_today="2026-11-26T00:00:00",
+            )
+
+            mock_get_fn.assert_called_once_with(
+                "http://test-server:8080/api/v1/eod/symbols",
+                params={"global_startdate": "2025-01-01"},
+                headers={"X-API-KEY": "test-key"},
+                timeout=30,
+            )
+            mock_pull.assert_called_once_with("XLB", "1d", "2025-01-01", "2026-11-26")
+
+    def test_dataops_format_date_helper(self) -> None:
+        """Verify _format_date correctly normalizes all date types and strings."""
+        from datetime import datetime
+
+        from backend.api.v1.dataops import _format_date
+
+        assert _format_date("2025-01-01T00:00:00") == "2025-01-01"
+        assert _format_date("2025-01-01 12:30:45") == "2025-01-01"
+        assert _format_date("2025-01-01") == "2025-01-01"
+        assert _format_date(date(2025, 1, 1)) == "2025-01-01"
+        assert _format_date(datetime(2025, 1, 1, 12, 0, 0)) == "2025-01-01"

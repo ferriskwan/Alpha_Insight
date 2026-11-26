@@ -28,6 +28,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _format_date(val: Any) -> str:
+    """Format date, datetime, or date-like string to YYYY-MM-DD."""
+    if hasattr(val, "strftime"):
+        return val.strftime("%Y-%m-%d")
+    return str(val).split("T")[0].split(" ")[0].strip()
+
+
 @router.post("/sys/init")
 def sys_init(
     db: Session = Depends(get_db_session),
@@ -64,9 +71,11 @@ def sys_init(
     db.commit()
 
     global_start = (
-        start_rec.datevalue.isoformat() if start_rec.datevalue else (today_date - timedelta(days=365)).isoformat()
+        _format_date(start_rec.datevalue)
+        if start_rec.datevalue
+        else (today_date - timedelta(days=365)).strftime("%Y-%m-%d")
     )
-    global_today = today_date.isoformat()
+    global_today = today_date.strftime("%Y-%m-%d")
 
     return {
         "global_startdate": global_start,
@@ -86,14 +95,15 @@ def get_eod_symbols(
     db: Session = Depends(get_db_session),
 ) -> list[dict[str, str]]:
     """Return list of distinct watchlist symbols paired with their incremental start dates."""
+    clean_global_start = _format_date(global_startdate)
     symbols = list(db.scalars(select(Watchlist.symbol).distinct().order_by(Watchlist.symbol)).all())
     result = []
     for s in symbols:
         max_date = db.scalar(select(func.max(EodData.date)).where(EodData.symbol == s))
         if max_date:
-            next_start = (max_date + timedelta(days=1)).isoformat()
+            next_start = _format_date(max_date + timedelta(days=1))
         else:
-            next_start = global_startdate
+            next_start = clean_global_start
         result.append({"symbol": s, "start_date": next_start})
     return result
 
@@ -155,6 +165,7 @@ def get_fx_symbols(
     db: Session = Depends(get_db_session),
 ) -> list[dict[str, str]]:
     """Return distinct foreign currencies from watchlist with incremental fetch start dates."""
+    clean_global_start = _format_date(global_startdate)
     currencies = list(
         db.scalars(
             select(Watchlist.currency).where(Watchlist.currency.isnot(None), Watchlist.currency != "USD").distinct()
@@ -174,9 +185,9 @@ def get_fx_symbols(
             )
         )
         if max_date:
-            next_start = (max_date + timedelta(days=1)).isoformat()
+            next_start = _format_date(max_date + timedelta(days=1))
         else:
-            next_start = global_startdate
+            next_start = clean_global_start
         result.append(
             {
                 "symbol": yahoo_symbol,
