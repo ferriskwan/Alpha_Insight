@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-from sqlalchemy import func, select
-from starlette.testclient import TestClient
+from datetime import date
+from typing import Any
 
-from backend.db.models import DailyPortfolioSummary, SiteMap, Watchlist
-from backend.db.session import get_session_factory
-from backend.main import app
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from backend.db.models import DailyPortfolioSummary, Position, SiteMap, Watchlist
 from backend.repositories.committee_repo import (
     build_sector_committee_context,
 )
@@ -18,26 +20,78 @@ from backend.services.agent_orchestrator import run_sector_committee_orchestrati
 from backend.services.rss_service import fetch_sector_rss_news
 
 
-@pytest.fixture
-def db_session():
-    factory = get_session_factory()
-    session = factory()
-    try:
-        yield session
-    finally:
-        session.close()
+@pytest.fixture(autouse=True)
+def seed_epic11_entities(db_session: Session) -> None:
+    """Seed prerequisite GICS sector watchlist, sitemap, and portfolio records for Epic 1.1 tests."""
+    expected_tickers = ["XLK", "XLF", "XLV", "XLE", "XLI", "XLC", "XLY", "XLP", "XLB", "XLU", "XLRE", "SPY"]
+    for ticker in expected_tickers:
+        exists = db_session.scalar(select(Watchlist).where(Watchlist.symbol == ticker))
+        if not exists:
+            db_session.add(
+                Watchlist(
+                    user_id=1,
+                    watchlistname="Index",
+                    symbol=ticker,
+                    name=f"Sector ETF {ticker}",
+                    timezone="America/New_York",
+                    currency="USD",
+                )
+            )
 
+    node = db_session.scalar(select(SiteMap).where(SiteMap.route == "/research/sectors"))
+    if not node:
+        db_session.add(
+            SiteMap(
+                id=301,
+                parent_id=200,
+                menu_code="RESEARCH_SECTORS",
+                label="By Industry / Sector",
+                route="/research/sectors",
+                icon="Layers",
+                role_required="user",
+                order_index=3,
+                is_active=True,
+            )
+        )
 
-@pytest.fixture
-def client():
-    with TestClient(app) as c:
-        yield c
+    # Seed daily summary and active position for holdings pie aggregation test
+    dps = db_session.scalar(select(DailyPortfolioSummary).where(DailyPortfolioSummary.user_id == 1))
+    if not dps:
+        db_session.add(
+            DailyPortfolioSummary(
+                user_id=1,
+                date=date(2026, 3, 31),
+                currency="SGD",
+                investment=True,
+                total_capital=100000.0,
+                position_market_value=80000.0,
+                total_asset_value=120000.0,
+                realized_pnl=2000.0,
+                unrealized_pnl=5000.0,
+                total_pnl=7000.0,
+            )
+        )
+
+    pos = db_session.scalar(select(Position).where(Position.user_id == 1))
+    if not pos:
+        db_session.add(
+            Position(
+                user_id=1,
+                tradedate=date(2026, 3, 31),
+                symbol="D05.SI",
+                quantity=1000.0,
+                eodprice=35.0,
+                avgprice=30.0,
+            )
+        )
+
+    db_session.commit()
 
 
 class TestEpic11DatabaseAndSeed:
     """Verify Success Criteria 1 & 2: GICS sector seeds and site_map."""
 
-    def test_gics_sector_indexes_seeded_in_watchlist(self, db_session):
+    def test_gics_sector_indexes_seeded_in_watchlist(self, db_session: Session) -> None:
         expected_tickers = ["XLK", "XLF", "XLV", "XLE", "XLI", "XLC", "XLY", "XLP", "XLB", "XLU", "XLRE", "SPY"]
         rows = list(db_session.scalars(select(Watchlist).where(Watchlist.symbol.in_(expected_tickers))).all())
         found_symbols = {r.symbol.strip().upper() for r in rows}
@@ -47,7 +101,7 @@ class TestEpic11DatabaseAndSeed:
             assert row.watchlistname == "Index"
             assert row.currency == "USD"
 
-    def test_site_map_contains_by_industry_sector(self, db_session):
+    def test_site_map_contains_by_industry_sector(self, db_session: Session) -> None:
         node = db_session.scalar(select(SiteMap).where(SiteMap.route == "/research/sectors"))
         assert node is not None
         assert node.label == "By Industry / Sector"
@@ -57,8 +111,7 @@ class TestEpic11DatabaseAndSeed:
 class TestEpic11RssService:
     """Verify Success Criteria 4: Yahoo Finance RSS Ingestion."""
 
-    def test_fetch_sector_rss_news_live_or_fallback(self):
-        # Fetching for XLK should return list of articles or empty list on timeout
+    def test_fetch_sector_rss_news_live_or_fallback(self) -> None:
         news = fetch_sector_rss_news("XLK", limit=3, timeout_seconds=5.0)
         assert isinstance(news, list)
         for item in news:
@@ -68,8 +121,7 @@ class TestEpic11RssService:
             assert "publisher" in item
             assert "published_at" in item
 
-    def test_fetch_sector_rss_news_defensive_on_error(self):
-        # Invalid ticker should gracefully return empty list without throwing
+    def test_fetch_sector_rss_news_defensive_on_error(self) -> None:
         news = fetch_sector_rss_news("INVALID_TICKER_99999", limit=3, timeout_seconds=2.0)
         assert isinstance(news, list)
 
@@ -77,7 +129,7 @@ class TestEpic11RssService:
 class TestEpic11SectorPerformanceAndRotation:
     """Verify Success Criteria 3: Dynamic Sector Performance & RRG Quadrants."""
 
-    def test_get_sector_performance_horizons_and_quadrants(self, db_session):
+    def test_get_sector_performance_horizons_and_quadrants(self, db_session: Session) -> None:
         resp = get_sector_performance(db_session, horizon="1M")
         assert resp["horizon"] == "1M"
         assert resp["benchmark"] == "SPY"
@@ -102,7 +154,7 @@ class TestEpic11SectorPerformanceAndRotation:
 class TestEpic11SectorCommitteeAndFallback:
     """Verify Success Criteria 5, 6, 12, 13: 4-Analyst Committee & Fallback Warning."""
 
-    def test_build_sector_committee_context(self, db_session):
+    def test_build_sector_committee_context(self, db_session: Session) -> None:
         ctx = build_sector_committee_context(db_session, symbol="XLK", user_id=1)
         assert "sector_metrics" in ctx
         assert ctx["sector_metrics"]["symbol"] == "XLK"
@@ -111,8 +163,7 @@ class TestEpic11SectorCommitteeAndFallback:
         assert "past_outputs" in ctx
 
     @pytest.mark.asyncio
-    async def test_run_sector_committee_orchestration_fallback_detection(self):
-        # When Gemini raises credit depletion error, deterministic fallback report is generated with fallback_warning
+    async def test_run_sector_committee_orchestration_fallback_detection(self) -> None:
         metrics = {
             "symbol": "XLK",
             "name": "Technology",
@@ -135,7 +186,6 @@ class TestEpic11SectorCommitteeAndFallback:
         assert res["consensus_bias"] in ["Bullish", "Bearish", "Neutral"]
         assert res["consensus_confidence"] >= 50
         assert len(res["outputs"]) >= 4
-        # If API credits are depleted in test environment, fallback_warning is present
         if res.get("fallback_warning"):
             assert (
                 "credits depleted" in res["fallback_warning"].lower()
@@ -143,7 +193,9 @@ class TestEpic11SectorCommitteeAndFallback:
                 or "fallback mode" in res["fallback_warning"].lower()
             )
 
-    def test_api_sector_committee_endpoints(self, client):
+    def test_api_sector_committee_endpoints(self, client: TestClient, seed_test_data: dict[str, Any]) -> None:
+        client.cookies.set("alpha_sid", seed_test_data["session_sid"])
+
         # 1. GET /api/v1/research/sectors
         resp = client.get("/api/v1/research/sectors?horizon=1M")
         assert resp.status_code == 200
@@ -163,7 +215,13 @@ class TestEpic11SectorCommitteeAndFallback:
 class TestEpic11PortfolioOverviewRefinements:
     """Verify Success Criteria 7-11: Portfolio Overview Default Date, Timeframe, Holdings Pie, Total Portfolio."""
 
-    def test_portfolio_overview_default_date_and_timeframe(self, db_session, client):
+    def test_portfolio_overview_default_date_and_timeframe(
+        self,
+        db_session: Session,
+        client: TestClient,
+        seed_test_data: dict[str, Any],
+    ) -> None:
+        client.cookies.set("alpha_sid", seed_test_data["session_sid"])
         resp = client.get("/api/v1/portfolio/overview")
         assert resp.status_code == 200
         data = resp.json()
@@ -178,7 +236,7 @@ class TestEpic11PortfolioOverviewRefinements:
         if max_d:
             assert data["parameters"]["selectedDate"] == max_d.isoformat()
 
-    def test_total_portfolio_is_holdings_aggregation(self, db_session):
+    def test_total_portfolio_is_holdings_aggregation(self, db_session: Session) -> None:
         overview = get_portfolio_4chart_overview(db_session, user_id=1, currency="SGD", timeframe="6M")
         kpis = overview["kpis"]
         total_port = kpis["totalPortfolio"]
