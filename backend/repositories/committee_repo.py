@@ -595,3 +595,172 @@ def get_latest_macro_workbench_payload(
         "past_outputs": past_outputs,
         **ctx,
     }
+
+
+# ==============================================================================
+# Epic 1.1: Sector Committee Context, History & Payloads
+# ==============================================================================
+
+GICS_SECTOR_NAMES: dict[str, str] = {
+    "XLK": "Information Technology",
+    "XLF": "Financials",
+    "XLV": "Healthcare",
+    "XLY": "Consumer Discretionary",
+    "XLC": "Communication Services",
+    "XLI": "Industrials",
+    "XLP": "Consumer Staples",
+    "XLE": "Energy",
+    "XLB": "Materials",
+    "XLU": "Utilities",
+    "XLRE": "Real Estate",
+}
+
+
+def build_sector_committee_context(
+    db: Session,
+    symbol: str,
+    user_id: int = 1,
+) -> dict[str, Any]:
+    """Assemble quantitative market metrics, rotation parameters, and news for a GICS sector ETF."""
+    from backend.repositories.research_repo import get_sector_performance
+    from backend.services.rss_service import fetch_sector_rss_news
+
+    clean_sym = (symbol or "XLK").strip().upper()
+    sector_name = GICS_SECTOR_NAMES.get(clean_sym, f"Sector {clean_sym}")
+
+    # 1. Multi-horizon returns and rotation metrics
+    perf_data = get_sector_performance(db=db, horizon="1M")
+    matched_sector = next((s for s in perf_data.get("sectors", []) if s.get("ticker") == clean_sym), None)
+
+    rotation_info = {
+        "quadrant": matched_sector.get("relativeRotation", "Leading") if matched_sector else "Leading",
+        "rs_score": matched_sector.get("rsScore", 1.0) if matched_sector else 1.0,
+        "rs_momentum": matched_sector.get("rsMomentum", 0.0) if matched_sector else 0.0,
+    }
+
+    weight = matched_sector.get("weight", 0.0) if matched_sector else 0.0
+
+    # Collect returns across horizons for this sector
+    returns_by_horizon: dict[str, float] = {}
+    for hz in ("1D", "1W", "1M", "3M", "6M", "1Y"):
+        hz_perf = get_sector_performance(db=db, horizon=hz)
+        hz_match = next((s for s in hz_perf.get("sectors", []) if s.get("ticker") == clean_sym), None)
+        returns_by_horizon[hz] = hz_match.get("value", 0.0) if hz_match else 0.0
+
+    sector_metrics = {
+        "symbol": clean_sym,
+        "sector_name": sector_name,
+        "weight": weight,
+        "returns": returns_by_horizon,
+        "rotation": rotation_info,
+        "benchmark_return_1m": perf_data.get("benchmarkReturn", 0.0),
+    }
+
+    # 2. Fetch top 5 headlines from Yahoo Finance RSS
+    news_items = fetch_sector_rss_news(clean_sym, limit=5)
+
+    # 3. Retrieve past committee runs for historical memory
+    past_rows = list(
+        db.scalars(
+            select(AgentAnalystOutput)
+            .where(AgentAnalystOutput.symbol == clean_sym)
+            .order_by(desc(AgentAnalystOutput.created_at), desc(AgentAnalystOutput.id))
+            .limit(12)
+        ).all()
+    )
+    past_outputs = [serialize_analyst_output(r) for r in past_rows]
+
+    return {
+        "symbol": clean_sym,
+        "sector_name": sector_name,
+        "sector_metrics": sector_metrics,
+        "news_items": news_items,
+        "past_outputs": past_outputs,
+    }
+
+
+def get_latest_sector_committee_payload(
+    db: Session,
+    symbol: str,
+    run_id: Optional[int] = None,
+    user_id: int = 1,
+) -> dict[str, Any]:
+    """Retrieve the latest (or specific run_id) sector committee run and historical runs list."""
+    clean_sym = (symbol or "XLK").strip().upper()
+    sector_name = GICS_SECTOR_NAMES.get(clean_sym, f"Sector {clean_sym}")
+
+    if run_id:
+        target_run = db.scalar(
+            select(AgentCommitteeRun)
+            .where(AgentCommitteeRun.id == run_id, AgentCommitteeRun.symbol == clean_sym)
+            .limit(1)
+        )
+    else:
+        target_run = db.scalar(
+            select(AgentCommitteeRun)
+            .where(AgentCommitteeRun.symbol == clean_sym)
+            .order_by(desc(AgentCommitteeRun.created_at), desc(AgentCommitteeRun.id))
+            .limit(1)
+        )
+
+    outputs: list[dict[str, Any]] = []
+    if target_run:
+        out_rows = list(
+            db.scalars(
+                select(AgentAnalystOutput)
+                .where(AgentAnalystOutput.run_id == target_run.id)
+                .order_by(AgentAnalystOutput.id)
+            ).all()
+        )
+        outputs = [serialize_analyst_output(r) for r in out_rows]
+
+    # Historical runs list for stepper
+    history_rows = list(
+        db.scalars(
+            select(AgentCommitteeRun)
+            .where(AgentCommitteeRun.symbol == clean_sym)
+            .order_by(desc(AgentCommitteeRun.created_at), desc(AgentCommitteeRun.id))
+            .limit(10)
+        ).all()
+    )
+    history = [
+        {
+            "run_id": r.id,
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "consensus_bias": r.consensus_bias,
+            "model": r.model,
+        }
+        for r in history_rows
+    ]
+
+    from backend.services.rss_service import fetch_sector_rss_news
+
+    news_items = fetch_sector_rss_news(clean_sym, limit=5)
+
+    return {
+        "run": (
+            {
+                "id": target_run.id,
+                "created_at": target_run.created_at.isoformat() if target_run.created_at else "",
+                "consensus_bias": target_run.consensus_bias,
+                "consensus_confidence": target_run.consensus_confidence,
+                "model": target_run.model,
+                "provider": target_run.provider,
+            }
+            if target_run
+            else None
+        ),
+        "run_id": target_run.id if target_run else 0,
+        "symbol": clean_sym,
+        "sector_name": sector_name,
+        "provider": target_run.provider if target_run else "gemini",
+        "model": target_run.model if target_run else "gemini-2.5-flash",
+        "consensus_bias": target_run.consensus_bias if target_run else "Neutral",
+        "consensus_confidence": target_run.consensus_confidence if target_run else 50,
+        "executive_summary": target_run.executive_summary if target_run else "",
+        "vote_breakdown": target_run.vote_breakdown if target_run else {},
+        "outputs": outputs,
+        "history": history,
+        "news_sources": news_items,
+        "created_at": target_run.created_at.isoformat() if target_run and target_run.created_at else "",
+    }

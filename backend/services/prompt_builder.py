@@ -642,3 +642,140 @@ def build_system_prompt(
         f"{extra_fundamental}"
     )
     return prompt
+
+
+# ==============================================================================
+# Epic 1.1: Sector Committee Prompt Builders (Technical, Fundamental, Macro, Risk)
+# ==============================================================================
+
+
+def build_sector_analyst_prompt(
+    symbol: str,
+    role: str,
+    sector_name: str,
+    sector_metrics: dict[str, Any],
+    news_items: list[dict[str, Any]],
+    past_outputs: list[dict[str, Any]],
+) -> str:
+    """Construct specialist prompt for Sector Committee analyst role (technical, fundamental, macro, risk)."""
+    clean_sym = symbol.upper().strip()
+    role_clean = role.lower().strip()
+    returns = sector_metrics.get("returns", {})
+    rotation = sector_metrics.get("rotation", {})
+    weight = sector_metrics.get("weight", 0.0)
+
+    news_text = ""
+    if news_items:
+        news_lines = []
+        for item in news_items[:5]:
+            title = item.get("title", "")
+            url = item.get("url", "")
+            pub = item.get("publisher", "Yahoo Finance")
+            dt = item.get("published_at", "")
+            news_lines.append(f"- [{title}]({url}) ({pub}, {dt})")
+        news_text = "\n".join(news_lines)
+    else:
+        news_text = (
+            "No recent syndicated RSS headlines found. Use Google Search grounding to retrieve recent industry news."
+        )
+
+    quadrant = rotation.get("quadrant", "Leading")
+    rs_score = rotation.get("rs_score", 1.0)
+    rs_mom = rotation.get("rs_momentum", 0.0)
+
+    role_instruction = ""
+    if role_clean == "technical":
+        role_instruction = (
+            f"You are the Lead Technical Analyst for the Sector Committee evaluating {clean_sym} ({sector_name}).\n"
+            f"Analyze multi-horizon returns, relative strength vs SPY ({rs_score}), and rotation quadrant "
+            f"({quadrant} with momentum {rs_mom}). "
+            f"Assess moving average trends, support/resistance levels, and tactical trajectory."
+        )
+    elif role_clean == "fundamental":
+        role_instruction = (
+            f"You are the Fundamental & Valuation Analyst for the Sector Committee evaluating {clean_sym} "
+            f"({sector_name}).\n"
+            f"Analyze industry earnings trends, secular demand, valuation multiples, capital expenditure cycles, "
+            f"and key corporate drivers governing constituents of this sector ETF (S&P 500 weight: {weight}%)."
+        )
+    elif role_clean == "macro":
+        role_instruction = (
+            f"You are the Macro & Cross-Asset Strategist for the Sector Committee evaluating {clean_sym} "
+            f"({sector_name}).\n"
+            f"Analyze interest rate sensitivity, yield curve shifts, inflation dynamics, currency impacts, "
+            f"and fiscal/regulatory policies impacting this sector relative to the broader economy."
+        )
+    else:  # risk
+        role_instruction = (
+            f"You are the Risk Management Specialist for the Sector Committee evaluating {clean_sym} "
+            f"({sector_name}).\n"
+            f"Analyze sector concentration risk, constituent drawdown scenarios, downside catalysts, "
+            f"and portfolio allocation limits for institutional asset positioning."
+        )
+
+    ret_1d = returns.get("1D", 0.0)
+    ret_1w = returns.get("1W", 0.0)
+    ret_1m = returns.get("1M", 0.0)
+    ret_3m = returns.get("3M", 0.0)
+    ret_6m = returns.get("6M", 0.0)
+    ret_1y = returns.get("1Y", 0.0)
+
+    return (
+        f"# Sector Committee Specialist Mandate: [{role_clean.upper()}]\n"
+        f"{role_instruction}\n\n"
+        f"# Sector Market Data Context (`public.eoddata`)\n"
+        f"- **Ticker / Name**: {clean_sym} — {sector_name}\n"
+        f"- **S&P 500 Benchmark Weight**: {weight}%\n"
+        f"- **Multi-Horizon Returns**: 1D: {ret_1d}%, 1W: {ret_1w}%, 1M: {ret_1m}%, "
+        f"3M: {ret_3m}%, 6M: {ret_6m}%, 1Y: {ret_1y}%\n"
+        f"- **Relative Rotation**: Quadrant = {quadrant}, RS Score = {rs_score}, "
+        f"RS Momentum = {rs_mom}\n\n"
+        f"# Recent Sector News & Publications (Yahoo Finance RSS)\n"
+        f"{news_text}\n\n"
+        f"# Required Output Format\n"
+        f"DIRECTIONAL_BIAS: (Bullish / Bearish / Neutral)\n"
+        f"CONFIDENCE_SCORE: (Integer 0-100)\n"
+        f"TREND_STATUS: (Continuation / Reversal / Initiation / Gap)\n"
+        f"SUMMARY_HEADLINE: (A single concise headline summarizing the sector's {role_clean} posture)\n\n"
+        f"Provide 3-4 structured Markdown sections detailing your findings, key catalysts, and risk factors. "
+        f"Cite publication URLs where applicable."
+    )
+
+
+def build_sector_executive_summary_prompt(
+    symbol: str,
+    sector_name: str,
+    four_outputs_map: dict[str, Any],
+    past_outputs: list[dict[str, Any]],
+) -> str:
+    """Construct prompt for Sector Committee Executive Summary / Consensus."""
+    clean_sym = symbol.upper().strip()
+
+    tech = four_outputs_map.get("technical", {})
+    fund = four_outputs_map.get("fundamental", {})
+    macro = four_outputs_map.get("macro", {})
+    risk = four_outputs_map.get("risk", {})
+
+    return (
+        f"# Sector Committee Executive Chair Mandate\n"
+        f"You are the Chair of the Sector Research Committee synthesizing views on {clean_sym} ({sector_name}).\n"
+        f"Your role is to evaluate the 4 specialist outputs below, determine consensus, and provide an outlook.\n\n"
+        f"## Specialist Committee Inputs\n"
+        f"- **Technical Analysis**: Stance = {tech.get('directional_bias')}, Conf = {tech.get('confidence_score')}%, "
+        f"Headline: {tech.get('summary_headline')}\n"
+        f"- **Fundamental Analysis**: Stance = {fund.get('directional_bias')}, Conf = {fund.get('confidence_score')}%, "
+        f"Headline: {fund.get('summary_headline')}\n"
+        f"- **Macro Strategy**: Stance = {macro.get('directional_bias')}, Conf = {macro.get('confidence_score')}%, "
+        f"Headline: {macro.get('summary_headline')}\n"
+        f"- **Risk Management**: Stance = {risk.get('directional_bias')}, Conf = {risk.get('confidence_score')}%, "
+        f"Headline: {risk.get('summary_headline')}\n\n"
+        f"# Required Output Format\n"
+        f"DIRECTIONAL_BIAS: (Bullish / Bearish / Neutral)\n"
+        f"CONFIDENCE_SCORE: (Integer 0-100 consensus confidence)\n"
+        f"TREND_STATUS: (Continuation / Reversal / Initiation / Gap)\n"
+        f"SUMMARY_HEADLINE: (One-sentence executive consensus on {clean_sym} {sector_name})\n\n"
+        f"### Consolidated Committee Synthesis\n"
+        f"- Technical, Fundamental, Macro, and Risk takeaways in clean bullet points.\n\n"
+        f"### Strategic Sector Outlook & Tactical Positioning\n"
+        f"- Concrete positioning recommendations, catalyst timelines, and downside thresholds."
+    )

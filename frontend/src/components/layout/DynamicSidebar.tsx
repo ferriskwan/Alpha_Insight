@@ -134,6 +134,17 @@ const DEFAULT_FALLBACK_TREE: SiteMapNode[] = [
         order_index: 2,
         is_active: true,
       },
+      {
+        id: 205,
+        parent_id: 8,
+        menu_code: 'research.sectors',
+        label: 'By Industry / Sector',
+        route: '/research/sectors',
+        icon: 'Layers',
+        role_required: 'analyst',
+        order_index: 3,
+        is_active: true,
+      },
     ],
   },
   {

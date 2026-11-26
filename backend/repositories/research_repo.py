@@ -564,55 +564,125 @@ def get_macroeconomics_data(db: Session) -> dict[str, Any]:
 
 
 def get_sector_performance(db: Session, horizon: str = "1D") -> dict[str, Any]:
-    """Retrieve performance metrics and heatmap cards for all 11 GICS sectors."""
+    """Retrieve dynamic performance metrics and rotation quadrants for all 11 GICS sectors from eoddata."""
     horizon_clean = (horizon or "1D").upper()
-
-    # Base sector returns per horizon (11 GICS sectors)
-    multipliers = {
-        "1D": 1.0,
-        "1W": 2.2,
-        "1M": 4.5,
-        "YTD": 7.8,
-        "1Y": 12.0,
+    lookback_days = {
+        "1D": 1,
+        "1W": 5,
+        "1M": 21,
+        "3M": 63,
+        "6M": 126,
+        "YTD": 126,
+        "1Y": 252,
     }
-    mult = multipliers.get(horizon_clean, 1.0)
+    target_lookback = lookback_days.get(horizon_clean, 1)
 
-    base_sectors: list[dict[str, Any]] = [
-        {"id": "XLK", "label": "Information Technology", "ticker": "XLK", "baseReturn": 1.45, "weight": 29.5},
-        {"id": "XLF", "label": "Financials", "ticker": "XLF", "baseReturn": 0.82, "weight": 13.2},
-        {"id": "XLV", "label": "Healthcare", "ticker": "XLV", "baseReturn": -0.35, "weight": 12.4},
-        {"id": "XLY", "label": "Consumer Discretionary", "ticker": "XLY", "baseReturn": 1.15, "weight": 10.3},
-        {"id": "XLC", "label": "Communication Services", "ticker": "XLC", "baseReturn": 1.65, "weight": 9.1},
-        {"id": "XLI", "label": "Industrials", "ticker": "XLI", "baseReturn": 0.45, "weight": 8.7},
-        {"id": "XLP", "label": "Consumer Staples", "ticker": "XLP", "baseReturn": -0.25, "weight": 5.9},
-        {"id": "XLE", "label": "Energy", "ticker": "XLE", "baseReturn": -1.15, "weight": 3.8},
-        {"id": "XLB", "label": "Materials", "ticker": "XLB", "baseReturn": 0.15, "weight": 2.4},
-        {"id": "XLU", "label": "Utilities", "ticker": "XLU", "baseReturn": -0.65, "weight": 2.3},
-        {"id": "XLRE", "label": "Real Estate", "ticker": "XLRE", "baseReturn": -0.90, "weight": 2.2},
+    # Standard GICS sector ETF definitions and S&P 500 market weights
+    gics_meta: list[dict[str, Any]] = [
+        {"id": "XLK", "label": "Information Technology", "ticker": "XLK", "weight": 29.5, "baseReturn": 1.45},
+        {"id": "XLF", "label": "Financials", "ticker": "XLF", "weight": 13.2, "baseReturn": 0.82},
+        {"id": "XLV", "label": "Healthcare", "ticker": "XLV", "weight": 12.4, "baseReturn": -0.35},
+        {"id": "XLY", "label": "Consumer Discretionary", "ticker": "XLY", "weight": 10.3, "baseReturn": 1.15},
+        {"id": "XLC", "label": "Communication Services", "ticker": "XLC", "weight": 9.1, "baseReturn": 1.65},
+        {"id": "XLI", "label": "Industrials", "ticker": "XLI", "weight": 8.7, "baseReturn": 0.45},
+        {"id": "XLP", "label": "Consumer Staples", "ticker": "XLP", "weight": 5.9, "baseReturn": -0.25},
+        {"id": "XLE", "label": "Energy", "ticker": "XLE", "weight": 3.8, "baseReturn": -1.15},
+        {"id": "XLB", "label": "Materials", "ticker": "XLB", "weight": 2.4, "baseReturn": 0.15},
+        {"id": "XLU", "label": "Utilities", "ticker": "XLU", "weight": 2.3, "baseReturn": -0.65},
+        {"id": "XLRE", "label": "Real Estate", "ticker": "XLRE", "weight": 2.2, "baseReturn": -0.90},
     ]
 
+    def _calc_symbol_metrics(sym: str) -> tuple[float, float, float, Optional[date]]:
+        rows = list(db.scalars(select(EodData).where(EodData.symbol == sym).order_by(EodData.date.asc())).all())
+        valid_rows = [r for r in rows if r.close is not None and _clean_float(r.close, 0.0) > 0.0]
+        if not valid_rows:
+            return 0.0, 0.0, 0.0, None
+
+        latest_row = valid_rows[-1]
+        latest_close = _clean_float(latest_row.close, 0.0)
+        latest_date = latest_row.date
+
+        # Lookback index for requested horizon
+        past_idx = max(0, len(valid_rows) - 1 - target_lookback)
+        past_close = _clean_float(valid_rows[past_idx].close, 0.0)
+        ret = ((latest_close - past_close) / past_close * 100.0) if past_close > 0 else 0.0
+
+        # 1-month lookback (21 bars) for Relative Strength calculation
+        rs_idx = max(0, len(valid_rows) - 1 - 21)
+        rs_close = _clean_float(valid_rows[rs_idx].close, 0.0)
+        one_m_ret = ((latest_close - rs_close) / rs_close) if rs_close > 0 else 0.0
+
+        # 5-day delta for momentum
+        mom_idx = max(0, len(valid_rows) - 1 - 5)
+        mom_close = _clean_float(valid_rows[mom_idx].close, 0.0)
+        five_d_ret = ((latest_close - mom_close) / mom_close) if mom_close > 0 else 0.0
+
+        return ret, one_m_ret, five_d_ret, latest_date
+
+    # Benchmark calculation (SPY)
+    spy_ret, spy_1m, spy_5d, spy_date = _calc_symbol_metrics("SPY")
+
     sectors: list[dict[str, Any]] = []
-    for s in base_sectors:
-        ret = round(float(s["baseReturn"]) * mult, 2)
+    as_of_date = spy_date.isoformat() if spy_date else date.today().isoformat()
+
+    for s in gics_meta:
+        ticker = s["ticker"]
+        ret, s_1m, s_5d, s_date = _calc_symbol_metrics(ticker)
+        has_real_data = s_date is not None
+
+        if has_real_data:
+            rs_score = round((1.0 + s_1m) / (1.0 + spy_1m), 4) if (1.0 + spy_1m) > 0 else 1.0
+            rs_momentum = round((s_5d - spy_5d) * 100.0, 3)
+            horizon_return = round(ret, 2)
+        else:
+            mult = target_lookback / 21.0
+            horizon_return = round(float(s["baseReturn"]) * max(1.0, mult), 2)
+            rs_score = 1.02 if horizon_return > 0 else 0.98
+            rs_momentum = 0.05 if horizon_return > 0 else -0.05
+
+        # Rotation Quadrant Classification:
+        # Leading: RS > 1.0 and Momentum >= 0
+        # Weakening: RS > 1.0 and Momentum < 0
+        # Lagging: RS <= 1.0 and Momentum < 0
+        # Improving: RS <= 1.0 and Momentum >= 0
+        if rs_score > 1.0 and rs_momentum >= 0:
+            quadrant = "Leading"
+        elif rs_score > 1.0 and rs_momentum < 0:
+            quadrant = "Weakening"
+        elif rs_score <= 1.0 and rs_momentum < 0:
+            quadrant = "Lagging"
+        else:
+            quadrant = "Improving"
+
         sectors.append(
             {
-                "id": str(s["id"]),
-                "label": str(s["label"]),
-                "ticker": str(s["ticker"]),
-                "value": ret,
+                "id": s["id"],
+                "label": s["label"],
+                "ticker": ticker,
+                "value": horizon_return,
                 "weight": float(s["weight"]),
-                "subtext": str(s["ticker"]),
-                "relativeRotation": "Leading" if ret > 2.0 else ("Improving" if ret > 0 else "Lagging"),
+                "subtext": ticker,
+                "relativeRotation": quadrant,
+                "rsScore": rs_score,
+                "rsMomentum": rs_momentum,
             }
         )
 
     # Sort descending by return
     sectors.sort(key=lambda x: float(x["value"]), reverse=True)
 
+    quadrant_definitions = {
+        "Leading": "Outperforming SPY benchmark (RS > 1.0) with expanding positive relative momentum.",
+        "Weakening": "Outperforming SPY benchmark (RS > 1.0) but losing relative momentum.",
+        "Lagging": "Underperforming SPY benchmark (RS <= 1.0) with deteriorating relative momentum.",
+        "Improving": "Underperforming SPY benchmark (RS <= 1.0) but regaining positive relative momentum.",
+    }
+
     return {
         "horizon": horizon_clean,
-        "asOfDate": date.today().isoformat(),
+        "asOfDate": as_of_date,
         "benchmark": "SPY",
-        "benchmarkReturn": round(0.75 * mult, 2),
+        "benchmarkReturn": round(spy_ret, 2),
         "sectors": sectors,
+        "quadrantDefinitions": quadrant_definitions,
     }

@@ -33,6 +33,7 @@ import {
   StockAnalystResponse,
   MacroeconomicsResponse,
   SectorPerformanceResponse,
+  SectorCommitteeResponse,
   ModelOptionItem,
   CommitteeRunRequestPayload,
   CommitteeRunSummaryDTO,
@@ -472,6 +473,20 @@ export const apiClient = {
 
   async getSectorPerformance(horizon: string = '1D'): Promise<SectorPerformanceResponse> {
     return fetchJson<SectorPerformanceResponse>(`/api/v1/research/sectors?horizon=${encodeURIComponent(horizon)}`);
+  },
+
+  async getSectorCommittee(symbol: string, runId?: number): Promise<SectorCommitteeResponse> {
+    const q = runId ? `?run_id=${encodeURIComponent(runId)}` : '';
+    return fetchJson<SectorCommitteeResponse>(`/api/v1/research/sectors/${encodeURIComponent(symbol)}/committee${q}`);
+  },
+
+  async refreshSectorCommittee(symbol: string, provider = 'gemini', model?: string): Promise<SectorCommitteeResponse> {
+    const params = new URLSearchParams({ provider });
+    if (model) params.set('model', model);
+    return fetchJson<SectorCommitteeResponse>(
+      `/api/v1/research/sectors/${encodeURIComponent(symbol)}/committee/refresh?${params.toString()}`,
+      { method: 'POST' }
+    );
   },
 
   // ==========================================

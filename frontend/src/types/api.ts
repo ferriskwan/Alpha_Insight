@@ -382,6 +382,7 @@ export interface PortfolioCommentaryResponse {
   cached: boolean;
   lastUpdated: string;
   commentaries: Record<string, PortfolioCommentaryItem>;
+  fallback_warning?: string | null;
 }
 
 export interface Chart1EquityVsBenchmark {
@@ -404,6 +405,9 @@ export interface Chart3AssetAllocation {
   value: number;
   percentage: number;
   currency: string;
+  symbol?: string;
+  quantity?: number;
+  price?: number;
 }
 
 export interface Chart4DailyPnLDrawdown {
@@ -437,12 +441,14 @@ export interface PortfolioOverviewResponse {
   kpis: PortfolioOverviewKPIs;
   chart1_portfolio_capital_margin?: PortfolioCapitalMarginPoint[];
   chart2_pnl_breakdown?: PortfolioChart2Data;
-  chart1_equity_vs_benchmark: Chart1EquityVsBenchmark[];
-  chart2_cumulative_pnl: Chart2CumulativePnL[];
+  chart1_equity_vs_benchmark?: Chart1EquityVsBenchmark[];
+  chart2_cumulative_pnl?: Chart2CumulativePnL[];
   chart3_asset_allocation: Chart3AssetAllocation[];
+  chart3_holdings_pie?: Chart3AssetAllocation[];
   chart4_daily_pnl_drawdown: Chart4DailyPnLDrawdown[];
   trade_annotations?: PortfolioTradeAnnotation[];
   capital_annotations?: PortfolioCapitalAnnotation[];
+  fallback_warning?: string | null;
 }
 
 export interface WatchlistEnrichedItem {
@@ -540,6 +546,8 @@ export interface SectorItem {
   weight: number;
   subtext: string;
   relativeRotation: string;
+  rsScore?: number;
+  rsMomentum?: number;
 }
 
 export interface SectorPerformanceResponse {
@@ -548,6 +556,39 @@ export interface SectorPerformanceResponse {
   benchmark: string;
   benchmarkReturn: number;
   sectors: SectorItem[];
+  quadrantDefinitions?: Record<string, string>;
+}
+
+export interface SectorNewsItem {
+  title: string;
+  url: string;
+  publisher: string;
+  published_at: string;
+}
+
+export interface SectorCommitteeOutputItem {
+  role: string;
+  directional_bias: string;
+  confidence_score: number;
+  key_metrics: Record<string, any>;
+  report_content: string;
+  citations?: Array<{ title: string; url: string }>;
+}
+
+export interface SectorCommitteeResponse {
+  run_id: number;
+  symbol: string;
+  sector_name: string;
+  provider: string;
+  model: string;
+  consensus_bias: string;
+  consensus_confidence: number;
+  executive_summary: string;
+  vote_breakdown: Record<string, any>;
+  outputs: SectorCommitteeOutputItem[];
+  news_sources: SectorNewsItem[];
+  fallback_warning?: string | null;
+  created_at: string;
 }
 
 // ==========================================
@@ -609,6 +650,7 @@ export interface CommitteeRunSummaryDTO {
   executive_summary: string;
   vote_breakdown: Record<string, string>;
   created_at: string;
+  fallback_warning?: string | null;
 }
 
 export interface CommitteeRunDetailDTO extends CommitteeRunSummaryDTO {
@@ -708,6 +750,7 @@ export interface LiveFxRateItem {
 
 export interface MacroWorkbenchResponseDTO {
   run: CommitteeRunSummaryDTO | null;
+  fallback_warning?: string | null;
   outputs: AgentAnalystOutputDTO[];
   past_outputs: AgentAnalystOutputDTO[];
   benchmark_symbol: string;

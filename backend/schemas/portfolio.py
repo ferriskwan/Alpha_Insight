@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -111,9 +111,11 @@ class PortfolioOverviewResponse(BaseModel):
     chart1_equity_vs_benchmark: list[dict[str, Any]] = Field(default_factory=list)
     chart2_cumulative_pnl: list[dict[str, Any]] = Field(default_factory=list)
     chart3_asset_allocation: list[dict[str, Any]] = Field(default_factory=list)
+    chart3_holdings_pie: list[dict[str, Any]] = Field(default_factory=list)
     chart4_daily_pnl_drawdown: list[dict[str, Any]] = Field(default_factory=list)
     trade_annotations: list[PortfolioTradeAnnotation] = Field(default_factory=list)
     capital_annotations: list[PortfolioCapitalAnnotation] = Field(default_factory=list)
+    fallback_warning: Optional[str] = None
 
 
 class PortfolioCommentaryItem(BaseModel):
@@ -130,3 +132,4 @@ class PortfolioCommentaryResponse(BaseModel):
     cached: bool = True
     lastUpdated: str = ""
     commentaries: dict[str, PortfolioCommentaryItem] = Field(default_factory=dict)
+    fallback_warning: Optional[str] = None

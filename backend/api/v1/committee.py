@@ -109,6 +109,7 @@ async def execute_committee_run(
         chart_candles=contexts["chart_candles"],
         chart_trades=contexts["chart_trades"],
         past_outputs=serialized_past,
+        fallback_warning=orchestration_result.get("fallback_warning"),
     )
 
 
@@ -365,9 +366,11 @@ async def execute_macro_workbench_run(
         executive_summary=run_row.executive_summary,
         vote_breakdown=run_row.vote_breakdown or {},
         created_at=run_row.created_at,
+        fallback_warning=orchestration_result.get("fallback_warning"),
     )
     return MacroWorkbenchResponse(
         run=run_summary,
+        fallback_warning=orchestration_result.get("fallback_warning"),
         outputs=[
             AgentAnalystOutputResponse.model_validate(committee_repo.serialize_analyst_output(r)) for r in output_rows
         ],

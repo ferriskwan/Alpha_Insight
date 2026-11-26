@@ -20,6 +20,7 @@ import WatchlistView from './components/portfolio/WatchlistView';
 import StockAnalystView from './components/research/StockAnalystView';
 import MacroeconomicsView from './components/research/MacroeconomicsView';
 import AnalystCommitteeView from './components/research/AnalystCommitteeView';
+import { IndustrySectorView } from './components/research/IndustrySectorView';
 import {
   SplitPaneLayout,
   SplitLayoutMode,
@@ -232,6 +233,14 @@ export const App: React.FC = () => {
     if (route.includes('macro')) {
       return (
         <MacroeconomicsView
+          onReferenceInNote={handleReferenceInNote}
+          onContextUpdate={handleContextUpdate}
+        />
+      );
+    }
+    if (route.includes('sector')) {
+      return (
+        <IndustrySectorView
           onReferenceInNote={handleReferenceInNote}
           onContextUpdate={handleContextUpdate}
         />

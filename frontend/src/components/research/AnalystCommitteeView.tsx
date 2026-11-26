@@ -392,6 +392,28 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
 
   return (
     <div className="space-y-4" data-testid="analyst-committee-view">
+      {/* AI Fallback Warning Banner if credits depleted */}
+      {activeRun?.fallback_warning && (
+        <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-md flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 text-xs text-amber-900 leading-relaxed">
+            <span className="font-bold">AI Provider Service Notice: </span>
+            {activeRun.fallback_warning}{' '}
+            <a
+              href="https://ai.studio/projects"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-0.5 font-bold text-amber-950 underline hover:text-amber-800 ml-1"
+            >
+              Manage Billing & Credits ↗
+            </a>
+            <div className="text-[11px] text-amber-800 mt-1">
+              Deterministic fallback analytics applied with standard quantitative technical rules.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. Top Control Toolbar */}
       <div className="bg-white border border-slate-200 p-4 rounded-md space-y-3">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
@@ -508,7 +530,7 @@ export const AnalystCommitteeView: React.FC<AnalystCommitteeViewProps> = ({
               className="w-full py-2 px-3 rounded bg-blue-700 text-white font-semibold text-xs hover:bg-blue-800 disabled:opacity-50 transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>{running ? 'Performing Analysis...' : 'Perform Analysis'}</span>
+              <span>{running ? 'Running AI Analysis...' : 'AI Analysis'}</span>
             </button>
           </div>
         </div>
