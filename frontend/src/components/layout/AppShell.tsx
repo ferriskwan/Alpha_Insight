@@ -6,7 +6,7 @@ import {
   Columns,
   Sparkles,
 } from 'lucide-react';
-import { UserRoleType, UserSummary } from '../../types/api';
+import { UserRoleType, UserSummary, AuthEnvConfig } from '../../types/api';
 import apiClient from '../../services/apiClient';
 import DynamicSidebar from './DynamicSidebar';
 import {
@@ -27,6 +27,7 @@ export interface AppShellProps {
   splitMode?: SplitLayoutMode;
   onSplitModeChange?: (mode: SplitLayoutMode) => void;
   displayedContext?: DisplayedScreenContext;
+  authEnv?: AuthEnvConfig | null;
   children: React.ReactNode;
 }
 
@@ -40,9 +41,34 @@ export const AppShell: React.FC<AppShellProps> = ({
   splitMode = 'single',
   onSplitModeChange,
   displayedContext,
+  authEnv,
   children,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [internalAuthEnv, setInternalAuthEnv] = useState<AuthEnvConfig | null>(authEnv || null);
+
+  useEffect(() => {
+    if (authEnv) {
+      setInternalAuthEnv(authEnv);
+    } else {
+      let isMounted = true;
+      apiClient
+        .getAuthEnv()
+        .then((cfg) => {
+          if (isMounted) setInternalAuthEnv(cfg);
+        })
+        .catch(() => {
+          if (isMounted) setInternalAuthEnv({ env: 'DEV', googleClientId: '', dbName: '4leafclover_dev' });
+        });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [authEnv]);
+
+  const runtimeEnv = (internalAuthEnv?.env || 'DEV').toUpperCase();
+  const runtimeDb = internalAuthEnv?.dbName || (runtimeEnv === 'PRD' ? '4leafclover' : '4leafclover_dev');
+  const isProd = runtimeEnv === 'PRD';
   const [agenticAnalystOpen, setAgenticAnalystOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<AgentChatTurn[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -165,9 +191,16 @@ export const AppShell: React.FC<AppShellProps> = ({
             </div>
           </div>
 
-          <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-slate-50 border border-slate-300 text-slate-600">
-            <span className="w-2 h-2 rounded-full bg-emerald-700" />
-            <span>DEV / 4leafclover_dev</span>
+          <div
+            className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono font-medium ${
+              isProd
+                ? 'bg-emerald-50 border border-emerald-300 text-emerald-800'
+                : 'bg-slate-50 border border-slate-300 text-slate-600'
+            }`}
+            data-testid="runtime-env-badge"
+          >
+            <span className={`w-2 h-2 rounded-full ${isProd ? 'bg-emerald-600' : 'bg-emerald-700'}`} />
+            <span>{runtimeEnv} / {runtimeDb}</span>
           </div>
         </div>
 

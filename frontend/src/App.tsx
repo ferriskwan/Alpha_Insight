@@ -277,6 +277,7 @@ export const App: React.FC = () => {
   return (
     <AppShell
       currentPath={currentPath}
+      authEnv={authEnv}
       onNavigate={(newRoute) => {
         if (activePane === 'right' && splitMode !== 'single') {
           setRightPath(newRoute);
