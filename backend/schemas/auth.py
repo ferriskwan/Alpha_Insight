@@ -31,6 +31,7 @@ class AuthEnvResponse(BaseModel):
 
     env: str
     googleClientId: str
+    dbName: Optional[str] = Field(default=None, description="Active database name")
 
 
 class AdminUserStatusUpdateRequest(BaseModel):

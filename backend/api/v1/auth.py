@@ -35,6 +35,7 @@ def get_auth_env(settings: Settings = Depends(get_current_settings)) -> AuthEnvR
     return AuthEnvResponse(
         env=settings.env,
         googleClientId=settings.google_client_id,
+        dbName=settings.db_name,
     )
 
 

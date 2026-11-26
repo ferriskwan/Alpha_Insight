@@ -20,6 +20,7 @@ class TestAuthEndpointsUAT003:
         data = resp.json()
         assert "env" in data
         assert "googleClientId" in data
+        assert "dbName" in data
         assert data["env"] in ("DEV", "TEST")
 
     def test_google_login_mock_mode(self, client: TestClient, seed_test_data: dict[str, Any]) -> None:
