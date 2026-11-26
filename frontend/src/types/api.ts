@@ -15,6 +15,7 @@ export interface UserProfile {
 export interface AuthEnvConfig {
   env: string;
   googleClientId: string;
+  dbName?: string;
 }
 
 export interface WatchlistSymbolItem {
