@@ -72,9 +72,11 @@ def init_system_dates(api_url: str, headers: dict[str, str]) -> Tuple[str, str]:
 def fetch_and_store_eod(api_url: str, headers: dict[str, str], global_startdate: str, global_today: str) -> None:
     """Fetch End-Of-Day market data and upload it to the Cloud API server."""
     logger.info("[main.py]: Fetching EOD symbols queue from API")
+    clean_global_start = str(global_startdate).split("T")[0].split(" ")[0].strip()
+    clean_today = str(global_today).split("T")[0].split(" ")[0].strip()
     response = requests.get(
         f"{api_url}/api/v1/eod/symbols",
-        params={"global_startdate": global_startdate},
+        params={"global_startdate": clean_global_start},
         headers=headers,
         timeout=30,
     )
@@ -83,11 +85,11 @@ def fetch_and_store_eod(api_url: str, headers: dict[str, str], global_startdate:
 
     for item in symbols_queue:
         symbol = item["symbol"]
-        symbol_start_date = item["start_date"]
+        symbol_start_date = str(item["start_date"]).split("T")[0].split(" ")[0].strip()
         logger.debug("[main.py].EODData: Processing symbol: %s with start date: %s", symbol, symbol_start_date)
 
         try:
-            pulldata = md.pulldata_yahoo(symbol, "1d", symbol_start_date, global_today)
+            pulldata = md.pulldata_yahoo(symbol, "1d", symbol_start_date, clean_today)
             if pulldata is None:
                 logger.warning("[main.py].EODData: No data retrieved for symbol: %s", symbol)
                 continue
@@ -113,9 +115,11 @@ def fetch_and_store_eod(api_url: str, headers: dict[str, str], global_startdate:
 def fetch_and_store_fx(api_url: str, headers: dict[str, str], global_startdate: str, global_today: str) -> None:
     """Fetch End-Of-Day FX data and upload it to the Cloud API server."""
     logger.info("[main.py]: Fetching FX symbols queue from API")
+    clean_global_start = str(global_startdate).split("T")[0].split(" ")[0].strip()
+    clean_today = str(global_today).split("T")[0].split(" ")[0].strip()
     response = requests.get(
         f"{api_url}/api/v1/fx/symbols",
-        params={"global_startdate": global_startdate},
+        params={"global_startdate": clean_global_start},
         headers=headers,
         timeout=30,
     )
@@ -125,7 +129,7 @@ def fetch_and_store_fx(api_url: str, headers: dict[str, str], global_startdate: 
     for item in symbols_queue:
         symbol = item["symbol"]
         currency = item["currency"]
-        symbol_start_date = item["start_date"]
+        symbol_start_date = str(item["start_date"]).split("T")[0].split(" ")[0].strip()
         logger.debug(
             "[main.py].FXData: Processing currency: %s (symbol %s) with start date: %s",
             currency,
@@ -134,7 +138,7 @@ def fetch_and_store_fx(api_url: str, headers: dict[str, str], global_startdate: 
         )
 
         try:
-            pulldata = md.pulldata_yahoo(symbol, "1d", symbol_start_date, global_today)
+            pulldata = md.pulldata_yahoo(symbol, "1d", symbol_start_date, clean_today)
             if not pulldata:
                 logger.warning("[main.py].FXData: No data retrieved for symbol: %s", symbol)
                 continue

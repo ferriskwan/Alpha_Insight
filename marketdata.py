@@ -55,11 +55,13 @@ def pulldata_yahoo(
     enddate: str,
 ) -> Optional[dict[str, Any]]:
     """Fetch market data from Yahoo Finance."""
+    clean_start = str(startdate).split("T")[0].split(" ")[0].strip()
+    clean_end = str(enddate).split("T")[0].split(" ")[0].strip()
     try:
         data = yf.download(
             symbol,
-            start=startdate,
-            end=enddate,
+            start=clean_start,
+            end=clean_end,
             interval=interval,
             multi_level_index=False,
             progress=False,
@@ -70,8 +72,8 @@ def pulldata_yahoo(
             "meta": {
                 "symbol": symbol,
                 "interval": interval,
-                "start_date": startdate,
-                "end_date": enddate,
+                "start_date": clean_start,
+                "end_date": clean_end,
             }
         }
 
@@ -95,8 +97,8 @@ def pulldata_yahoo(
 
                 from curl_cffi import requests as cffi_requests
 
-                p1 = int(dt_cls.strptime(startdate, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
-                p2 = int(dt_cls.strptime(enddate, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+                p1 = int(dt_cls.strptime(clean_start, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
+                p2 = int(dt_cls.strptime(clean_end, "%Y-%m-%d").replace(tzinfo=timezone.utc).timestamp())
                 chart_url = (
                     f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
                     f"?period1={p1}&period2={p2}&interval={interval}"
