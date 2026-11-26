@@ -32,6 +32,7 @@ import marketdata as md
 import run_daily_margin_interest
 import run_mark_to_market
 import run_portfolio_summary
+import run_sector_research
 from backend.config import get_settings
 
 # Configure console logging
@@ -282,6 +283,10 @@ def main() -> None:
         # Consolidate daily portfolio metrics & PnL snapshots
         logger.info("[main.py]: Triggering run_portfolio_summary process...")
         run_portfolio_summary.run_portfolio_summary()
+
+        # Pre-compute daily 4-analyst Sector Committee research
+        logger.info("[main.py]: Triggering run_sector_research process...")
+        run_sector_research.run_sector_research()
 
         if db_session and log_id:
             from backend.repositories.sys_repo import update_job_execution_log

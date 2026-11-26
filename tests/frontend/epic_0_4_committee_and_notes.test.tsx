@@ -194,7 +194,7 @@ describe('Epic 0.4 Frontend: AnalystCommitteeView, InvestmentNotesView & Floatin
     render(<AnalystCommitteeView initialSymbol="AAPL" onReferenceInNote={handleRefInNote} />);
 
     expect(await screen.findByText('Stock Analysis')).toBeInTheDocument();
-    expect(screen.getByText('Perform Analysis')).toBeInTheDocument();
+    expect(screen.getByText('AI Analysis')).toBeInTheDocument();
     expect(screen.getByTestId('chart-mode-multiday')).toBeInTheDocument();
     expect(screen.getByTestId('chart-mode-intraday')).toBeInTheDocument();
     expect(await screen.findByTestId('interactive-canvas-chart')).toBeInTheDocument();

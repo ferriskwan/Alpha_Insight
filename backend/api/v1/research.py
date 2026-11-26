@@ -10,6 +10,11 @@ from sqlalchemy.orm import Session
 
 from backend.db.session import get_db_session
 from backend.dependencies import get_current_user_optional
+from backend.repositories.committee_repo import (
+    build_sector_committee_context,
+    create_committee_run_with_outputs,
+    get_latest_sector_committee_payload,
+)
 from backend.repositories.market_repo import get_eod_data
 from backend.repositories.portfolio_repo import get_trades
 from backend.repositories.research_repo import (
@@ -18,6 +23,7 @@ from backend.repositories.research_repo import (
     get_stock_analyst_data,
 )
 from backend.schemas.auth import UserProfileResponse
+from backend.services.agent_orchestrator import run_sector_committee_orchestration
 from backend.services.chart_runner import generate_candlestick_png
 
 logger = logging.getLogger(__name__)
@@ -134,3 +140,46 @@ def get_sectors(
 ) -> dict[str, Any]:
     """Retrieve 11 GICS sector performance metrics, weighting, and relative rotation categories."""
     return get_sector_performance(db, horizon=horizon)
+
+
+@router.get("/sectors/{symbol}/committee")
+def get_sector_committee(
+    symbol: str,
+    run_id: Optional[int] = Query(default=None),
+    db: Session = Depends(get_db_session),
+    user: Optional[UserProfileResponse] = Depends(get_current_user_optional),
+) -> dict[str, Any]:
+    """Retrieve the latest or specific historical sector committee run and citations."""
+    user_id = user.id if user else 1
+    return get_latest_sector_committee_payload(db=db, symbol=symbol, run_id=run_id, user_id=user_id)
+
+
+@router.post("/sectors/{symbol}/committee/refresh")
+async def refresh_sector_committee(
+    symbol: str,
+    provider: str = Query(default="gemini"),
+    model: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db_session),
+    user: Optional[UserProfileResponse] = Depends(get_current_user_optional),
+) -> dict[str, Any]:
+    """On-demand execution of the 4-analyst Sector Committee with RSS & Gemini Grounding."""
+    user_id = user.id if user else 1
+    clean_sym = symbol.strip().upper()
+    ctx = build_sector_committee_context(db=db, symbol=clean_sym, user_id=user_id)
+    orch_res = await run_sector_committee_orchestration(
+        symbol=clean_sym,
+        provider=provider,
+        model=model,
+        sector_metrics=ctx["sector_metrics"],
+        news_items=ctx["news_items"],
+        past_outputs=ctx["past_outputs"],
+    )
+    run_row, output_rows = create_committee_run_with_outputs(
+        db=db,
+        user_id=user_id,
+        orchestration_result=orch_res,
+    )
+    res = get_latest_sector_committee_payload(db=db, symbol=clean_sym, run_id=run_row.id, user_id=user_id)
+    if orch_res.get("fallback_warning"):
+        res["fallback_warning"] = orch_res["fallback_warning"]
+    return res

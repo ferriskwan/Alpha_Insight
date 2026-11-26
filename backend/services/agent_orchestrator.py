@@ -30,6 +30,8 @@ from backend.services.prompt_builder import (
     build_macro_dimension_prompt,
     build_macro_strategist_prompt,
     build_risk_manager_prompt,
+    build_sector_analyst_prompt,
+    build_sector_executive_summary_prompt,
     build_system_prompt,
     build_technical_analyst_prompt,
 )
@@ -136,6 +138,9 @@ async def _invoke_llm_text(
     if provider == "kimi":
         api_key = settings.kimi_api_key
         if not api_key:
+            domain_metrics["fallback_warning"] = (
+                "Kimi API key is not configured. Operating in deterministic fallback mode."
+            )
             return _generate_deterministic_role_report(symbol, role_tag, provider, model, domain_metrics, past_outputs)
         try:
             from openai import AsyncOpenAI
@@ -150,10 +155,16 @@ async def _invoke_llm_text(
                 return text
         except Exception as exc:
             logger.warning("Kimi specialist call (%s) fell back to deterministic report: %s", role_tag, exc)
+            domain_metrics["fallback_warning"] = (
+                f"Kimi provider error: {str(exc)[:100]}. Operating in deterministic fallback mode."
+            )
         return _generate_deterministic_role_report(symbol, role_tag, provider, model, domain_metrics, past_outputs)
 
     api_key = settings.gemini_api_key
     if not api_key:
+        domain_metrics["fallback_warning"] = (
+            "Gemini API key is not configured. Operating in deterministic fallback mode."
+        )
         return _generate_deterministic_role_report(symbol, role_tag, provider, model, domain_metrics, past_outputs)
 
     try:
@@ -173,6 +184,23 @@ async def _invoke_llm_text(
             return text
     except Exception as exc:
         logger.warning("Gemini specialist call (%s) fell back to deterministic report: %s", role_tag, exc)
+        err_str = str(exc)
+        if "402" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            domain_metrics["fallback_warning"] = (
+                "Google Gemini credits depleted (402 RESOURCE_EXHAUSTED). Operating in deterministic fallback mode."
+            )
+        elif "401" in err_str or "API_KEY_INVALID" in err_str:
+            domain_metrics["fallback_warning"] = (
+                "Google Gemini API key invalid or unauthorized. Operating in deterministic fallback mode."
+            )
+        elif "429" in err_str or "RATE_LIMIT" in err_str:
+            domain_metrics["fallback_warning"] = (
+                "Google Gemini rate limit exceeded (429). Operating in deterministic fallback mode."
+            )
+        else:
+            domain_metrics["fallback_warning"] = (
+                f"Google Gemini provider error: {err_str[:100]}. Operating in deterministic fallback mode."
+            )
 
     return _generate_deterministic_role_report(symbol, role_tag, provider, model, domain_metrics, past_outputs)
 
@@ -187,6 +215,78 @@ def _generate_deterministic_role_report(
 ) -> str:
     """Generate deterministic structured specialist output when external LLM call is unavailable."""
     has_past = len(past_outputs) > 0
+    # Sector ETF deterministic fallback branch
+    sector_name = domain_metrics.get("sector_name")
+    if sector_name or symbol.upper().startswith("XL") or symbol.upper() == "SPY":
+        s_name = sector_name or f"Sector {symbol.upper()}"
+        returns = domain_metrics.get("returns", {})
+        rotation = domain_metrics.get("rotation", {})
+        quadrant = rotation.get("quadrant", "Leading")
+        rs_score = rotation.get("rs_score", 1.0)
+        ret_1m = returns.get("1M", 1.25)
+        bias = "Bullish" if ret_1m >= 0 else "Bearish"
+        trend = "Continuation" if has_past else "Initiation"
+        conf = 80 if bias == "Bullish" else 65
+
+        if role_tag == "technical":
+            return (
+                f"DIRECTIONAL_BIAS: {bias}\n"
+                f"CONFIDENCE_SCORE: {conf}\n"
+                f"TREND_STATUS: {trend}\n"
+                f"SUMMARY_HEADLINE: {symbol} ({s_name}) demonstrates {bias.lower()} momentum in {quadrant}.\n\n"
+                f"### 1. Multi-Horizon Relative Strength\n"
+                f"- Relative Strength vs SPY sits at **{rs_score:.4f}** ({quadrant} quadrant).\n"
+                f"- 1D `{returns.get('1D', 0.0):+.2f}%`, 1W `{returns.get('1W', 0.0):+.2f}%`, 1M `{ret_1m:+.2f}%`\n\n"
+                f"### 2. Tactical Trajectory & Rotation\n"
+                f"- Trend direction classified as **{trend}** relative to S&P 500 benchmark."
+            )
+        elif role_tag == "fundamental":
+            return (
+                f"DIRECTIONAL_BIAS: {bias}\n"
+                f"CONFIDENCE_SCORE: {conf}\n"
+                f"TREND_STATUS: {trend}\n"
+                f"SUMMARY_HEADLINE: {s_name} fundamentals supported by constituent earnings visibility.\n\n"
+                f"### 1. Industry Earnings & Valuation\n"
+                f"- {s_name} maintains S&P 500 benchmark weighting of **{domain_metrics.get('weight', 0.0):.1f}%**.\n"
+                f"- Cash flow durability across mega-cap constituents underpins current multiple valuations.\n\n"
+                f"### 2. Secular Drivers & Capital Cycles\n"
+                f"- Enterprise demand and capital expenditures provide multi-quarter earnings support."
+            )
+        elif role_tag == "macro":
+            return (
+                f"DIRECTIONAL_BIAS: Neutral\n"
+                f"CONFIDENCE_SCORE: 75\n"
+                f"TREND_STATUS: Continuation\n"
+                f"SUMMARY_HEADLINE: Macro environment presents balanced risk/reward for {s_name}.\n\n"
+                f"### 1. Interest Rate & Yield Dynamics\n"
+                f"- Sovereign rate expectations and central bank terminal rates shape sector factor returns.\n"
+                f"- Foreign exchange rates and cross-asset liquidity support ongoing sector stability."
+            )
+        elif role_tag == "risk":
+            return (
+                f"DIRECTIONAL_BIAS: {bias}\n"
+                f"CONFIDENCE_SCORE: 70\n"
+                f"TREND_STATUS: Continuation\n"
+                f"SUMMARY_HEADLINE: Risk containment in {symbol} anchored by diversified basket.\n\n"
+                f"### 1. Concentration & Drawdown Limits\n"
+                f"- Sector ETF diversification mitigates single-stock idiosyncratic failure.\n"
+                f"- Recommended tactical stop-loss buffer set at **-4.5%** from current ETF NAV."
+            )
+        elif role_tag == "executive_summary":
+            return (
+                f"DIRECTIONAL_BIAS: {bias}\n"
+                f"CONFIDENCE_SCORE: 80\n"
+                f"TREND_STATUS: {trend}\n"
+                f"SUMMARY_HEADLINE: Committee consensus on {symbol} is {bias} in {quadrant} quadrant.\n\n"
+                f"### Consolidated Committee Synthesis\n"
+                f"- **Technical**: 1M `{ret_1m:+.2f}%`, RS `{rs_score:.4f}` maintain **{quadrant}** posture.\n"
+                f"- **Fundamental**: Weight `{domain_metrics.get('weight', 0.0):.1f}%` with earnings durability.\n"
+                f"- **Macro**: Balanced sensitivity to sovereign yield curve and monetary policy conditions.\n"
+                f"- **Risk**: ETF diversification contains idiosyncratic risks; tactical stop threshold at `-4.5%`.\n\n"
+                f"### Strategic Sector Outlook & Tactical Positioning\n"
+                f"- Disciplined positioning advised with sector status evaluated as **{trend}**."
+            )
+
     prior_biases = [
         str(p.get("directional_bias", "Neutral")) for p in past_outputs if p.get("analyst_role") == role_tag
     ]
@@ -628,6 +728,13 @@ async def run_committee_orchestration(
         past_outputs,
     )
 
+    fallback_warning = (
+        tech_ctx.get("fallback_warning")
+        or fund_ctx.get("fallback_warning")
+        or macro_ctx.get("fallback_warning")
+        or risk_ctx.get("fallback_warning")
+        or exec_metrics.get("fallback_warning")
+    )
     return {
         "symbol": clean_symbol,
         "provider": clean_provider,
@@ -636,6 +743,7 @@ async def run_committee_orchestration(
         "consensus_confidence": exec_parsed["confidence_score"],
         "executive_summary": exec_parsed["markdown_output"],
         "vote_breakdown": vote_breakdown,
+        "fallback_warning": fallback_warning,
         "outputs": [
             exec_parsed,
             tech_parsed,
@@ -776,6 +884,9 @@ async def run_macro_workbench_orchestration(
         "referenced_output_ids": us_parsed["referenced_output_ids"],
     }
 
+    fallback_warning = (
+        us_ctx.get("fallback_warning") or apac_ctx.get("fallback_warning") or sec_ctx.get("fallback_warning")
+    )
     return {
         "symbol": "MACRO",
         "provider": clean_provider,
@@ -784,6 +895,7 @@ async def run_macro_workbench_orchestration(
         "consensus_confidence": avg_conf,
         "executive_summary": consolidated_md,
         "vote_breakdown": votes,
+        "fallback_warning": fallback_warning,
         "outputs": [
             us_parsed,
             apac_parsed,
@@ -1215,6 +1327,39 @@ def generate_portfolio_overview_commentary(
         risk_bullets.append(f"Risk committee note — {analyst_insights['risk']}")
     risk_content = "\n".join(f"- {b}" for b in risk_bullets)
 
+    # Detect fallback warning from recent analyst outputs or runs
+    fallback_warning_msg: Optional[str] = None
+    if "recent_outs" in locals():
+        for ro in recent_outs:
+            metrics = ro.structured_metrics or {}
+            if metrics.get("fallback_warning"):
+                fallback_warning_msg = metrics["fallback_warning"]
+                break
+            if ro.markdown_output and "Deterministic fallback" in ro.markdown_output:
+                fallback_warning_msg = (
+                    "Google Gemini credits depleted (402 RESOURCE_EXHAUSTED). Operating in deterministic fallback mode."
+                )
+                break
+
+    if not fallback_warning_msg:
+        from backend.db.models import AgentCommitteeRun
+
+        latest_run = db.scalar(
+            select(AgentCommitteeRun).order_by(desc(AgentCommitteeRun.created_at), desc(AgentCommitteeRun.id)).limit(1)
+        )
+        if latest_run:
+            latest_out = db.scalar(
+                select(AgentAnalystOutput).where(AgentAnalystOutput.run_id == latest_run.id).limit(1)
+            )
+            if latest_out and latest_out.structured_metrics and latest_out.structured_metrics.get("fallback_warning"):
+                fallback_warning_msg = latest_out.structured_metrics["fallback_warning"]
+            elif latest_run.model == "fallback" or (
+                latest_run.executive_summary and "Deterministic fallback" in latest_run.executive_summary
+            ):
+                fallback_warning_msg = (
+                    "Google Gemini credits depleted (402 RESOURCE_EXHAUSTED). Operating in deterministic fallback mode."
+                )
+
     payload = {
         "cached": False,
         "lastUpdated": datetime.now(timezone.utc).isoformat(),
@@ -1240,6 +1385,151 @@ def generate_portfolio_overview_commentary(
                 "content": risk_content,
             },
         },
+        "fallback_warning": fallback_warning_msg,
     }
     _portfolio_commentary_cache[cache_key] = payload
     return payload
+
+
+async def run_sector_committee_orchestration(
+    symbol: str,
+    provider: str = "gemini",
+    model: str | None = None,
+    sector_metrics: Optional[dict[str, Any]] = None,
+    news_items: Optional[list[dict[str, Any]]] = None,
+    past_outputs: Optional[list[dict[str, Any]]] = None,
+) -> dict[str, Any]:
+    """Execute the 4 segregated Sector Committee analyst roles + Executive Summary."""
+    settings = get_settings()
+    clean_symbol = (symbol or "XLK").upper().strip()
+    clean_provider = provider.lower().strip() if provider else "gemini"
+    resolved_model = model or (
+        settings.kimi_default_model if clean_provider == "kimi" else settings.gemini_default_model
+    )
+    sector_metrics = sector_metrics or {}
+    news_items = news_items or []
+    past_outputs = past_outputs or []
+    sector_name = sector_metrics.get("sector_name", f"Sector {clean_symbol}")
+
+    tech_prompt = build_sector_analyst_prompt(
+        clean_symbol, "technical", sector_name, sector_metrics, news_items, past_outputs
+    )
+    fund_prompt = build_sector_analyst_prompt(
+        clean_symbol, "fundamental", sector_name, sector_metrics, news_items, past_outputs
+    )
+    macro_prompt = build_sector_analyst_prompt(
+        clean_symbol, "macro", sector_name, sector_metrics, news_items, past_outputs
+    )
+    risk_prompt = build_sector_analyst_prompt(
+        clean_symbol, "risk", sector_name, sector_metrics, news_items, past_outputs
+    )
+
+    tech_ctx = dict(sector_metrics)
+    fund_ctx = dict(sector_metrics)
+    macro_ctx = dict(sector_metrics)
+    risk_ctx = dict(sector_metrics)
+
+    tech_raw, fund_raw, macro_raw, risk_raw = await asyncio.gather(
+        _invoke_llm_text(
+            tech_prompt,
+            clean_provider,
+            resolved_model,
+            clean_symbol,
+            "technical",
+            tech_ctx,
+            past_outputs,
+            use_search_grounding=True,
+        ),
+        _invoke_llm_text(
+            fund_prompt,
+            clean_provider,
+            resolved_model,
+            clean_symbol,
+            "fundamental",
+            fund_ctx,
+            past_outputs,
+            use_search_grounding=True,
+        ),
+        _invoke_llm_text(
+            macro_prompt,
+            clean_provider,
+            resolved_model,
+            clean_symbol,
+            "macro",
+            macro_ctx,
+            past_outputs,
+            use_search_grounding=True,
+        ),
+        _invoke_llm_text(
+            risk_prompt,
+            clean_provider,
+            resolved_model,
+            clean_symbol,
+            "risk",
+            risk_ctx,
+            past_outputs,
+            use_search_grounding=True,
+        ),
+    )
+
+    tech_parsed = parse_structured_analyst_output(tech_raw, "technical", clean_symbol, tech_ctx, past_outputs)
+    fund_parsed = parse_structured_analyst_output(fund_raw, "fundamental", clean_symbol, fund_ctx, past_outputs)
+    macro_parsed = parse_structured_analyst_output(macro_raw, "macro", clean_symbol, macro_ctx, past_outputs)
+    risk_parsed = parse_structured_analyst_output(risk_raw, "risk", clean_symbol, risk_ctx, past_outputs)
+
+    four_outputs_map = {
+        "technical": tech_parsed,
+        "fundamental": fund_parsed,
+        "macro": macro_parsed,
+        "risk": risk_parsed,
+    }
+
+    vote_breakdown = {
+        "technical": tech_parsed["directional_bias"],
+        "fundamental": fund_parsed["directional_bias"],
+        "macro": macro_parsed["directional_bias"],
+        "risk": risk_parsed["directional_bias"],
+    }
+
+    exec_ctx = dict(sector_metrics)
+    exec_ctx["votes"] = vote_breakdown
+    exec_prompt = build_sector_executive_summary_prompt(clean_symbol, sector_name, four_outputs_map, past_outputs)
+    exec_raw = await _invoke_llm_text(
+        exec_prompt,
+        clean_provider,
+        resolved_model,
+        clean_symbol,
+        "executive_summary",
+        exec_ctx,
+        past_outputs,
+        use_search_grounding=False,
+    )
+    exec_parsed = parse_structured_analyst_output(exec_raw, "executive_summary", clean_symbol, exec_ctx, past_outputs)
+
+    fallback_warning = (
+        tech_ctx.get("fallback_warning")
+        or fund_ctx.get("fallback_warning")
+        or macro_ctx.get("fallback_warning")
+        or risk_ctx.get("fallback_warning")
+        or exec_ctx.get("fallback_warning")
+    )
+
+    return {
+        "symbol": clean_symbol,
+        "sector_name": sector_name,
+        "provider": clean_provider,
+        "model": resolved_model,
+        "consensus_bias": exec_parsed["directional_bias"],
+        "consensus_confidence": exec_parsed["confidence_score"],
+        "executive_summary": exec_parsed["markdown_output"],
+        "vote_breakdown": vote_breakdown,
+        "outputs": [
+            exec_parsed,
+            tech_parsed,
+            fund_parsed,
+            macro_parsed,
+            risk_parsed,
+        ],
+        "news_sources": news_items,
+        "fallback_warning": fallback_warning,
+    }

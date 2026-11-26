@@ -5,6 +5,7 @@ import {
   DollarSign,
   Percent,
   RefreshCw,
+  Sparkles,
   Calendar,
   Layers,
   ShieldCheck,
@@ -39,6 +40,17 @@ const STOCK_COLORS = [
   '#047857', // Forest green
   '#D97706', // Dark amber
 ];
+
+const formatHoldingsKValue = (val: number): string => {
+  if (Math.abs(val) >= 1_000_000) {
+    return `$${(val / 1_000_000).toFixed(1)}M`;
+  }
+  if (Math.abs(val) >= 1_000) {
+    return `$${(val / 1_000).toFixed(1)}k`;
+  }
+  return `$${val.toFixed(0)}`;
+};
+
 
 interface TooltipBadgeProps {
   label: string;
@@ -136,9 +148,9 @@ export const PortfolioOverview: React.FC = () => {
 
   // Top Parameters
   const [currency, setCurrency] = useState<string>('SGD');
-  const [selectedDate, setSelectedDate] = useState<string>('2026-11-18');
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [mode, setMode] = useState<'amount' | 'pct'>('amount');
-  const [timeframe, setTimeframe] = useState<'1M' | '3M' | '6M' | '12M'>('12M');
+  const [timeframe, setTimeframe] = useState<'1M' | '3M' | '6M' | '12M'>('6M');
 
   // Chart 2 active stock toggles
   // Chart 1 & Chart 2 visibility checkboxes (toggling individual series never alters Total)
@@ -153,6 +165,7 @@ export const PortfolioOverview: React.FC = () => {
 
   // Synchronized crosshair index between Chart 1 and Chart 2
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const [hoveredSliceIdx, setHoveredSliceIdx] = useState<number | null>(null);
 
   const fetchOverview = async (ccy = currency, tf = timeframe, dt = selectedDate) => {
     setLoading(true);
@@ -458,7 +471,29 @@ export const PortfolioOverview: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="space-y-6 w-full pb-12">
+      {/* AI Fallback Warning Banner if credits depleted */}
+      {(commentaryData?.fallback_warning || data?.fallback_warning) && (
+        <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-md flex items-start gap-3 shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex-1 text-xs text-amber-900 leading-relaxed">
+            <span className="font-bold">AI Provider Service Notice: </span>
+            {commentaryData?.fallback_warning || data?.fallback_warning}{' '}
+            <a
+              href="https://ai.studio/projects"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-0.5 font-bold text-amber-950 underline hover:text-amber-800 ml-1"
+            >
+              Manage Billing & Credits ↗
+            </a>
+            <div className="text-[11px] text-amber-800 mt-1">
+              Deterministic fallback analytics applied with standard quantitative technical rules.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 1. Header & Parameters Toolbar */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
         <div>
@@ -546,7 +581,19 @@ export const PortfolioOverview: React.FC = () => {
             ))}
           </div>
 
-          {/* Refresh Button */}
+          {/* AI Analysis Button */}
+          <button
+            type="button"
+            onClick={() => fetchCommentary(currency, selectedDate, true)}
+            disabled={commentaryLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 disabled:bg-blue-400 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+            aria-label="AI Analysis (Refresh AI Commentary)"
+            title="AI Analysis (Refresh AI Commentary)"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${commentaryLoading ? 'animate-spin' : ''}`} />
+            {commentaryLoading ? 'Running AI Analysis...' : 'AI Analysis'}
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -620,7 +667,7 @@ export const PortfolioOverview: React.FC = () => {
           pctVal={kpis.totalPortfolioPct}
           currency={kpis.currency}
           isPctMode={mode === 'pct'}
-          formula="Total portfolio asset value (Capital + Positions + Realized PnL) / Period % Return"
+          formula="Aggregation of active positions in portfolio holdings: sum(Quantity × Market Price × FX)"
           trend={kpis.totalPortfolioPct >= 0 ? 'up' : 'down'}
           icon={<Layers className="w-4 h-4" />}
         />
@@ -632,39 +679,31 @@ export const PortfolioOverview: React.FC = () => {
         <span>Cash Available</span>
       </div>
 
-      {/* 3. Time Series Charts Section */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-6">
-        {/* Global Timeframe Selector */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Institutional Performance Series
-            </h2>
-            <p className="text-xs text-slate-500 font-sans">
-              Dynamic time-series curves with synchronized crosshair date alignment.
-            </p>
+            {/* 3. Main Body: 2-Column Institutional Workstation Layout (Left: Graphs, Right: AI Commentary) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Left Column (8 cols): 4 Institutional Graphs */}
+        <div className="lg:col-span-8 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs space-y-5">
+          {/* Global Timeframe Selector Toolbar (without redundant heading) */}
+          <div className="flex items-center justify-end gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200">
+              {(['1M', '3M', '6M', '12M'] as const).map((tf) => (
+                <button
+                  key={tf}
+                  type="button"
+                  onClick={() => setTimeframe(tf)}
+                  className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                    timeframe === tf
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
           </div>
 
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200">
-            {(['1M', '3M', '6M', '12M'] as const).map((tf) => (
-              <button
-                key={tf}
-                type="button"
-                onClick={() => setTimeframe(tf)}
-                className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
-                  timeframe === tf
-                    ? 'bg-blue-600 text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {tf}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 2x2 Grid for Institutional Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Chart 1: Total Portfolio Size, Capital, Margin over Time (Top-Left) */}
           <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -678,9 +717,9 @@ export const PortfolioOverview: React.FC = () => {
                 </span>
               </div>
 
-              {/* Chart 1 Interactive Legend Checkboxes */}
+              {/* Chart 1 Interactive Legend Checkboxes (Trades coupled to Portfolio Size) */}
               <div className="flex flex-wrap items-center gap-2.5 text-[11px] font-medium text-slate-600">
-                <label className="flex items-center gap-1 cursor-pointer select-none">
+                <label className="flex items-center gap-1 cursor-pointer select-none" title="Portfolio equity curve with trade execution markers">
                   <input
                     type="checkbox"
                     checked={showPortfolioSize}
@@ -691,11 +730,14 @@ export const PortfolioOverview: React.FC = () => {
                   <span className="w-2.5 h-1 bg-emerald-500 rounded-full inline-block" />
                   <span>Portfolio Size</span>
                 </label>
-                <label className="flex items-center gap-1 cursor-pointer select-none">
+                <label className="flex items-center gap-1 cursor-pointer select-none" title="Capital line with capital adjustment annotations">
                   <input
                     type="checkbox"
                     checked={showCapitalLine}
-                    onChange={(e) => setShowCapitalLine(e.target.checked)}
+                    onChange={(e) => {
+                      setShowCapitalLine(e.target.checked);
+                      setShowCapitalAnnotations(e.target.checked);
+                    }}
                     aria-label="Toggle Capital"
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                   />
@@ -712,27 +754,6 @@ export const PortfolioOverview: React.FC = () => {
                   />
                   <span className="w-2.5 h-1 bg-amber-500 rounded-full inline-block" />
                   <span>Margin Loan</span>
-                </label>
-                <span className="text-slate-300">|</span>
-                <label className="flex items-center gap-1 cursor-pointer select-none text-[10px] text-slate-500">
-                  <input
-                    type="checkbox"
-                    checked={showTradeAnnotations}
-                    onChange={(e) => setShowTradeAnnotations(e.target.checked)}
-                    aria-label="Show Trades"
-                    className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                  />
-                  <span>Trades</span>
-                </label>
-                <label className="flex items-center gap-1 cursor-pointer select-none text-[10px] text-slate-500">
-                  <input
-                    type="checkbox"
-                    checked={showCapitalAnnotations}
-                    onChange={(e) => setShowCapitalAnnotations(e.target.checked)}
-                    aria-label="Show Capital Adjustments"
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                  />
-                  <span>Capital Adj</span>
                 </label>
               </div>
             </div>
@@ -812,9 +833,8 @@ export const PortfolioOverview: React.FC = () => {
                         />
                       )}
 
-                      {/* Trade Annotations on Portfolio Size line */}
-                      {showTradeAnnotations &&
-                        showPortfolioSize &&
+                      {/* Trade Annotations coupled with Portfolio Size line */}
+                      {showPortfolioSize &&
                         chart1Series.map((pt, idx) => {
                           const dayTrades = tradesByDate.get(pt.date);
                           if (!dayTrades || dayTrades.length === 0) return null;
@@ -975,7 +995,7 @@ export const PortfolioOverview: React.FC = () => {
                           : `${chart1Series[hoverIdx].marginPct.toFixed(2)}%`}
                       </span>
                     </div>
-                    {showTradeAnnotations && (tradesByDate.get(chart1Series[hoverIdx].date)?.length ?? 0) > 0 && (
+                    {showPortfolioSize && (tradesByDate.get(chart1Series[hoverIdx].date)?.length ?? 0) > 0 && (
                       <div className="border-t border-slate-700 pt-1.5 mt-1.5 space-y-1">
                         <div className="text-[10px] uppercase text-emerald-300 font-sans font-semibold">
                           Transactions
@@ -1370,8 +1390,8 @@ export const PortfolioOverview: React.FC = () => {
                   <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" />
                   Asset & Currency Exposure Distribution
                 </h3>
-                <span className="text-[10px] text-slate-400 font-sans block">
-                  Proportional weight of equities, cash balances, and margin liabilities
+                <span className="text-[10px] text-slate-500 font-sans block mt-0.5">
+                  Holdings as of <span className="font-semibold text-slate-800 font-mono underline decoration-indigo-400">{selectedDate || 'latest'}</span> (Active portfolio holdings)
                 </span>
               </div>
               <span className="text-xs font-mono font-medium text-slate-500">
@@ -1379,45 +1399,181 @@ export const PortfolioOverview: React.FC = () => {
               </span>
             </div>
 
-            <div className="bg-slate-50 rounded-lg border border-slate-200 p-3 h-64 overflow-y-auto space-y-3">
+            <div className="relative bg-slate-50 rounded-lg border border-slate-200 p-3 h-64 flex flex-col md:flex-row items-center justify-between gap-4 overflow-hidden">
               {chart3Data.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-xs text-slate-400 font-mono">
-                  No current position holdings to display.
+                <div className="w-full h-full flex items-center justify-center text-xs text-slate-400 font-mono">
+                  No position holdings as of {selectedDate || 'selected date'}.
                 </div>
               ) : (
-                chart3Data.map((item, idx) => {
-                  const itemVal = Number(item.value ?? 0);
-                  const itemPct = Number(item.percentage ?? 0);
-                  const barColor =
-                    item.category === 'Cash'
-                      ? '#34D399'
-                      : STOCK_COLORS[idx % STOCK_COLORS.length];
-                  return (
-                    <div key={idx} className="space-y-1">
-                      <div className="flex justify-between text-xs font-mono text-slate-700">
-                        <span className="font-semibold flex items-center gap-1.5">
-                          <span
-                            className="w-2 h-2 rounded-full inline-block"
-                            style={{ backgroundColor: barColor }}
-                          />
-                          {item.name}
-                        </span>
-                        <span>
-                          {currency} {itemVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({itemPct.toFixed(1)}%)
-                        </span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-slate-200 overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-300"
+                <>
+                  {/* Interactive SVG Donut / Pie Chart */}
+                  <div className="relative w-40 h-40 shrink-0 flex items-center justify-center">
+                    <svg viewBox="0 0 200 200" className="w-full h-full transform -rotate-90">
+                      {(() => {
+                        let cumPercent = 0;
+                        const totalPct = chart3Data.reduce((acc, it) => acc + (Number(it.percentage) || 0), 0) || 100;
+                        return chart3Data.map((item, idx) => {
+                          const pct = Number(item.percentage ?? 0);
+                          const sliceFraction = pct / totalPct;
+                          const startAngle = cumPercent * 2 * Math.PI;
+                          cumPercent += sliceFraction;
+                          const endAngle = cumPercent * 2 * Math.PI;
+
+                          const r = 85;
+                          const ir = 48;
+                          const cx = 100;
+                          const cy = 100;
+
+                          const x1 = cx + r * Math.cos(startAngle);
+                          const y1 = cy + r * Math.sin(startAngle);
+                          const x2 = cx + r * Math.cos(endAngle);
+                          const y2 = cy + r * Math.sin(endAngle);
+
+                          const ix1 = cx + ir * Math.cos(endAngle);
+                          const iy1 = cy + ir * Math.sin(endAngle);
+                          const ix2 = cx + ir * Math.cos(startAngle);
+                          const iy2 = cy + ir * Math.sin(startAngle);
+
+                          const largeArc = sliceFraction > 0.5 ? 1 : 0;
+                          const pathD = chart3Data.length === 1
+                            ? `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx} ${cy + r} A ${r} ${r} 0 1 1 ${cx} ${cy - r} M ${cx} ${cy - ir} A ${ir} ${ir} 0 1 0 ${cx} ${cy + ir} A ${ir} ${ir} 0 1 0 ${cx} ${cy - ir} Z`
+                            : `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2} L ${ix1} ${iy1} A ${ir} ${ir} 0 ${largeArc} 0 ${ix2} ${iy2} Z`;
+
+                          const color = item.category === 'Cash' ? '#34D399' : STOCK_COLORS[idx % STOCK_COLORS.length];
+                          const isHovered = hoveredSliceIdx === idx;
+                          const sliceTitle = `${item.symbol || item.name} | Qty: ${Number(item.quantity || 0).toLocaleString()} | Val: ${currency} ${Number(item.value).toLocaleString(undefined, { minimumFractionDigits: 2 })} (${pct.toFixed(1)}%)`;
+                          return (
+                            <path
+                              key={idx}
+                              d={pathD}
+                              fill={color}
+                              stroke={isHovered ? '#FFFFFF' : 'none'}
+                              strokeWidth={isHovered ? 2.5 : 0}
+                              opacity={hoveredSliceIdx === null || isHovered ? 1 : 0.45}
+                              className="transition-all cursor-pointer"
+                              data-testid={`holdings-pie-slice-${idx}`}
+                              onMouseEnter={() => setHoveredSliceIdx(idx)}
+                              onMouseLeave={() => setHoveredSliceIdx(null)}
+                            >
+                              <title>{`${item.symbol || item.name} | Qty: ${Number(item.quantity || 0).toLocaleString()} | Val: ${currency} ${Number(item.value).toLocaleString(undefined, { minimumFractionDigits: 2 })} (${pct.toFixed(1)}%)`}</title>
+                            </path>
+                          );
+                        });
+                      })()}
+                    </svg>
+
+                    {/* Donut Center Label / Rollover Detail */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-1">
+                      {hoveredSliceIdx !== null && chart3Data[hoveredSliceIdx] ? (
+                        <>
+                          <span className="text-[11px] font-bold text-slate-900 font-mono leading-tight truncate max-w-[80px]">
+                            {chart3Data[hoveredSliceIdx].symbol || chart3Data[hoveredSliceIdx].name}
+                          </span>
+                          <span className="text-[10px] font-mono font-bold text-blue-700">
+                            {Number(chart3Data[hoveredSliceIdx].percentage ?? 0).toFixed(1)}%
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-500">
+                            {chart3Data[hoveredSliceIdx].quantity ? `${Number(chart3Data[hoveredSliceIdx].quantity).toLocaleString()} shs` : ''}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-[10px] text-slate-400 font-sans uppercase font-bold tracking-tight">Holdings</span>
+                          <span className="text-xs font-mono font-bold text-slate-800">{chart3Data.length}</span>
+                          <span className="text-[9px] text-slate-400 font-mono">{selectedDate ? selectedDate.slice(5) : ''}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Rollover Popover Details when hovering slice */}
+                  {hoveredSliceIdx !== null && chart3Data[hoveredSliceIdx] && (
+                    <div
+                      data-testid="holdings-pie-tooltip"
+                      className="absolute bottom-2 right-2 z-30 bg-slate-900 min-w-[210px] text-white text-xs font-mono p-2.5 rounded-lg border border-slate-700 shadow-xl pointer-events-none animate-in fade-in duration-100"
+                    >
+                      <div className="font-bold text-blue-300 flex items-center gap-1.5 border-b border-slate-700 pb-1 mb-1">
+                        <span
+                          className="w-2 h-2 rounded-full inline-block"
                           style={{
-                            width: `${Math.min(100, Math.max(0, itemPct))}%`,
-                            backgroundColor: barColor,
+                            backgroundColor:
+                              chart3Data[hoveredSliceIdx].category === 'Cash'
+                                ? '#34D399'
+                                : STOCK_COLORS[hoveredSliceIdx % STOCK_COLORS.length],
                           }}
                         />
+                        <span>{chart3Data[hoveredSliceIdx].symbol || chart3Data[hoveredSliceIdx].name}</span>
+                        <span className="text-[10px] text-slate-400 font-sans font-normal ml-auto">
+                          {selectedDate}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5 text-[11px]">
+                        <div className="flex justify-between gap-3 text-slate-300">
+                          <span>Quantity:</span>
+                          <span className="text-white font-semibold">
+                            {Number(chart3Data[hoveredSliceIdx].quantity ?? 0).toLocaleString()} shs
+                          </span>
+                        </div>
+                        {chart3Data[hoveredSliceIdx].price ? (
+                          <div className="flex justify-between gap-3 text-slate-300">
+                            <span>Price:</span>
+                            <span className="text-white font-semibold">
+                              {chart3Data[hoveredSliceIdx].currency || currency}{' '}
+                              {Number(chart3Data[hoveredSliceIdx].price).toFixed(2)}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="flex justify-between gap-3 text-slate-300">
+                          <span>Market Value:</span>
+                          <span className="text-white font-semibold">
+                            {currency}{' '}
+                            {Number(chart3Data[hoveredSliceIdx].value ?? 0).toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-3 text-slate-300">
+                          <span>Portfolio Weight:</span>
+                          <span className="text-emerald-400 font-semibold">
+                            {Number(chart3Data[hoveredSliceIdx].percentage ?? 0).toFixed(1)}%
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  );
-                })
+                  )}
+
+                  {/* Holdings Legend List with guaranteed Symbol visibility */}
+                  <div className="flex-1 h-full overflow-y-auto space-y-1 pr-1 w-full">
+                    {chart3Data.map((item, idx) => {
+                      const itemVal = Number(item.value ?? 0);
+                      const itemPct = Number(item.percentage ?? 0);
+                      const barColor = item.category === 'Cash' ? '#34D399' : STOCK_COLORS[idx % STOCK_COLORS.length];
+                      const isHovered = hoveredSliceIdx === idx;
+                      return (
+                        <div
+                          key={idx}
+                          onMouseEnter={() => setHoveredSliceIdx(idx)}
+                          onMouseLeave={() => setHoveredSliceIdx(null)}
+                          className={`flex items-center justify-between text-xs font-mono py-1 px-2 rounded transition-colors cursor-pointer border-b border-slate-100 last:border-0 ${
+                            isHovered ? 'bg-slate-200/70' : 'hover:bg-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0 mr-2">
+                            <span className="w-2.5 h-2.5 rounded-full inline-block shrink-0" style={{ backgroundColor: barColor }} />
+                            <span className="font-bold text-slate-900 truncate">
+                              {item.symbol || item.name}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0 font-semibold text-slate-700 whitespace-nowrap">
+                            <span>{formatHoldingsKValue(itemVal)}</span>
+                            <span className="text-slate-400 font-normal">{itemPct.toFixed(1)}%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
               )}
             </div>
           </div>
@@ -1603,50 +1759,51 @@ export const PortfolioOverview: React.FC = () => {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* 4. AI Portfolio Commentaries (4 Quadrants) */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-blue-600" />
-              AI Portfolio Intelligence
-            </h2>
-            <p className="text-xs text-slate-500 font-sans">
-              4-Quadrant executive commentary synthesizing Technical, Fundamental, Macro, and Risk Management dimensions.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
+        </div>
+        {/* Right Column (4 cols): AI Commentary (Without marketing titles, with fallback alert) */}
+        <div className="lg:col-span-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-blue-700" />
+              Executive Commentary
+            </span>
             {commentaryData?.lastUpdated && (
-              <span className="text-[11px] font-mono text-slate-400">
-                Updated: {new Date(commentaryData.lastUpdated).toLocaleTimeString()}
+              <span className="text-[10px] font-mono text-slate-400">
+                {new Date(commentaryData.lastUpdated).toLocaleTimeString()}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => fetchCommentary(currency, selectedDate, true)}
-              disabled={commentaryLoading}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${commentaryLoading ? 'animate-spin' : ''}`} />
-              Refresh AI Commentary
-            </button>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Quadrant 1: Technical */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-2">
+          {/* Fallback alert banner if Gemini credit exhaustion occurred */}
+          {(commentaryData?.fallback_warning || data?.fallback_warning) && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-900 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="leading-snug">
+                <span className="font-bold">Provider Notice: </span>
+                {commentaryData?.fallback_warning || data?.fallback_warning}{' '}
+                <a
+                  href="https://ai.studio/projects"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-0.5 underline font-bold text-amber-950"
+                >
+                  Manage Credits ↗
+                </a>
+              </div>
+            </div>
+          )}
+
+          {/* 4 Stacked Commentary Quadrants */}
+          <div className="space-y-3">
+            {/* Quadrant 1: Technical */}
+            <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Activity className="w-4 h-4 text-blue-600" />
+                  <Activity className="w-3.5 h-3.5 text-blue-600" />
                   {commentaryData?.commentaries?.technical?.title || 'Technical Posture'}
                 </span>
-                <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-blue-100 text-blue-800">
-                  {commentaryData?.commentaries?.technical?.status || 'Bullish'}
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-100 text-blue-800 font-mono">
+                  {commentaryData?.commentaries?.technical?.status || 'Neutral'}
                 </span>
               </div>
               <div className="text-xs text-slate-600 leading-relaxed font-sans whitespace-pre-line">
@@ -1654,17 +1811,15 @@ export const PortfolioOverview: React.FC = () => {
                   'Core holdings maintain steady trend support relative to moving averages with favorable aggregate entry basis.'}
               </div>
             </div>
-          </div>
 
-          {/* Quadrant 2: Fundamental */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-2">
+            {/* Quadrant 2: Fundamental */}
+            <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                   {commentaryData?.commentaries?.fundamental?.title || 'Fundamental Analysis'}
                 </span>
-                <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-800">
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800 font-mono">
                   {commentaryData?.commentaries?.fundamental?.status || 'Favorable'}
                 </span>
               </div>
@@ -1673,17 +1828,15 @@ export const PortfolioOverview: React.FC = () => {
                   'Deployed equity capital underpins valuation health with positive return generation across diversified sectors.'}
               </div>
             </div>
-          </div>
 
-          {/* Quadrant 3: Macro */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-2">
+            {/* Quadrant 3: Macro */}
+            <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
                   {commentaryData?.commentaries?.macro?.title || 'Macroeconomic Context'}
                 </span>
-                <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-100 text-amber-800">
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-amber-100 text-amber-800 font-mono">
                   {commentaryData?.commentaries?.macro?.status || 'Stable'}
                 </span>
               </div>
@@ -1692,17 +1845,15 @@ export const PortfolioOverview: React.FC = () => {
                   'Accounts evaluated in base currency with multi-currency coverage and active sensitivity monitoring.'}
               </div>
             </div>
-          </div>
 
-          {/* Quadrant 4: Risk Management */}
-          <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-2">
+            {/* Quadrant 4: Risk Management */}
+            <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
+              <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-indigo-600" />
+                  <Layers className="w-3.5 h-3.5 text-indigo-600" />
                   {commentaryData?.commentaries?.risk?.title || 'Risk Management'}
                 </span>
-                <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-indigo-100 text-indigo-800">
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-800 font-mono">
                   {commentaryData?.commentaries?.risk?.status || 'Healthy'}
                 </span>
               </div>

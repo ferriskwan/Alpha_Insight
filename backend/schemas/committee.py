@@ -70,6 +70,7 @@ class CommitteeRunSummaryResponse(BaseModel):
     executive_summary: str
     vote_breakdown: dict[str, str] = Field(default_factory=dict)
     created_at: datetime
+    fallback_warning: Optional[str] = None
 
 
 class CommitteeRunDetailResponse(CommitteeRunSummaryResponse):
@@ -156,6 +157,7 @@ class MacroWorkbenchResponse(BaseModel):
     """Complete payload for GET /api/v1/committee/macro/latest and POST /api/v1/committee/macro/run."""
 
     run: Optional[CommitteeRunSummaryResponse] = None
+    fallback_warning: Optional[str] = None
     outputs: list[AgentAnalystOutputResponse] = Field(default_factory=list)
     past_outputs: list[AgentAnalystOutputResponse] = Field(default_factory=list)
     benchmark_symbol: str

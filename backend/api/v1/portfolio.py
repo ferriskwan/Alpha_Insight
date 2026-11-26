@@ -38,7 +38,7 @@ router = APIRouter()
 @router.get("/overview", response_model=PortfolioOverviewResponse)
 def get_portfolio_overview(
     currency: Optional[str] = Query(default=None),
-    timeframe: str = Query(default="12M"),
+    timeframe: str = Query(default="6M"),
     start_date: Optional[str] = Query(default=None, alias="startDate"),
     end_date: Optional[str] = Query(default=None, alias="endDate"),
     date_param: Optional[str] = Query(default=None, alias="date"),
@@ -50,6 +50,18 @@ def get_portfolio_overview(
     """
     uid = user.id if user else 1
     effective_end = date_param or end_date
+    if not effective_end:
+        from sqlalchemy import func, select
+
+        from backend.db.models import DailyPortfolioSummary
+
+        max_d = db.scalar(select(func.max(DailyPortfolioSummary.date)).where(DailyPortfolioSummary.user_id == uid))
+        if not max_d and uid != 1:
+            max_d = db.scalar(select(func.max(DailyPortfolioSummary.date)).where(DailyPortfolioSummary.user_id == 1))
+        if not max_d:
+            max_d = db.scalar(select(func.max(DailyPortfolioSummary.date)))
+        if max_d:
+            effective_end = max_d.isoformat()
     data = get_portfolio_4chart_overview(
         db,
         user_id=uid,
@@ -67,6 +79,29 @@ def get_portfolio_overview(
             currency=currency,
             timeframe=timeframe,
         )
+    # Enrich with fallback_warning if Gemini credits are exhausted or fallback is active
+    from sqlalchemy import desc, select
+
+    from backend.db.models import AgentAnalystOutput, AgentCommitteeRun
+
+    latest_out = db.scalar(
+        select(AgentAnalystOutput).order_by(desc(AgentAnalystOutput.created_at), desc(AgentAnalystOutput.id)).limit(1)
+    )
+    if latest_out and latest_out.structured_metrics and latest_out.structured_metrics.get("fallback_warning"):
+        data["fallback_warning"] = latest_out.structured_metrics["fallback_warning"]
+    else:
+        latest_run = db.scalar(
+            select(AgentCommitteeRun).order_by(desc(AgentCommitteeRun.created_at), desc(AgentCommitteeRun.id)).limit(1)
+        )
+        if latest_run and (
+            latest_run.model == "fallback"
+            or latest_run.provider == "fallback"
+            or (latest_run.executive_summary and "Deterministic fallback" in latest_run.executive_summary)
+        ):
+            data["fallback_warning"] = (
+                "Google Gemini credits depleted (402 RESOURCE_EXHAUSTED). Operating in deterministic fallback mode."
+            )
+
     return data
 
 

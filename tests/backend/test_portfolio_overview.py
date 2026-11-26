@@ -96,7 +96,9 @@ class TestPortfolioOverviewEpic06:
         assert kpis["totalPnLPct"] == 14.68  # 21647 / 147500 * 100
         assert kpis["margin"] == 15000.0
         assert kpis["marginPct"] == 10.17  # 15000 / 147500 * 100
-        assert kpis["totalPortfolio"] == 212772.0
+        assert (
+            kpis["totalPortfolio"] == 60272.0
+        )  # Epic 1.1: Aggregation of active position holdings (25,272 AAPL + 35,000 D05.SI)
 
         # 3. Chart 1 series (PCM)
         pcm = res["chart1_portfolio_capital_margin"]

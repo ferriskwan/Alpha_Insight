@@ -849,7 +849,7 @@ def get_portfolio_4chart_overview(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     currency: Optional[str] = None,
-    timeframe: str = "12M",
+    timeframe: str = "6M",
 ) -> dict[str, Any]:
     """Return synchronized institutional analytical overview data for Epic 0.6.
 
@@ -860,14 +860,35 @@ def get_portfolio_4chart_overview(
     dashboard = get_portfolio_dashboard(db, user_id=user_id, currency=target_currency, limit=1500)
     perf_series = dashboard.get("performanceSeries", [])
     summary = dashboard.get("summary", {})
-    positions = dashboard.get("positions", [])
 
-    # Filter by timeframe if explicit start_date not provided
+    # Default end_date to max(DailyPortfolioSummary.date) if not provided
+    if not end_date:
+        max_summary_d = db.scalar(
+            select(func.max(DailyPortfolioSummary.date)).where(DailyPortfolioSummary.user_id == user_id)
+        )
+        if not max_summary_d and user_id != 1:
+            max_summary_d = db.scalar(
+                select(func.max(DailyPortfolioSummary.date)).where(DailyPortfolioSummary.user_id == 1)
+            )
+        if not max_summary_d:
+            max_summary_d = db.scalar(select(func.max(DailyPortfolioSummary.date)))
+        if max_summary_d:
+            end_date = max_summary_d.isoformat()
+
+    # Filter by end_date first
+    if end_date:
+        perf_series = [p for p in perf_series if p["date"] <= end_date]
+
+    # Filter by timeframe relative to end_date
     if perf_series:
-        max_d_dt = datetime.fromisoformat(perf_series[-1]["date"]).date()
+        ref_d = (
+            datetime.fromisoformat(end_date).date()
+            if end_date
+            else datetime.fromisoformat(perf_series[-1]["date"]).date()
+        )
         if not start_date and timeframe:
             tf_clean = str(timeframe).upper()
-            days = 365
+            days = 180
             if tf_clean == "1M":
                 days = 30
             elif tf_clean == "3M":
@@ -876,14 +897,11 @@ def get_portfolio_4chart_overview(
                 days = 180
             elif tf_clean in ("12M", "1Y"):
                 days = 365
-            cutoff_date = (max_d_dt - timedelta(days=days)).isoformat()
+            cutoff_date = (ref_d - timedelta(days=days)).isoformat()
             perf_series = [p for p in perf_series if p["date"] >= cutoff_date]
 
-    # Filter by date if provided
     if start_date:
         perf_series = [p for p in perf_series if p["date"] >= start_date]
-    if end_date:
-        perf_series = [p for p in perf_series if p["date"] <= end_date]
 
     # Drop weekends (Saturday = 5, Sunday = 6) from charts
     perf_series = [p for p in perf_series if datetime.fromisoformat(p["date"]).date().weekday() < 5]
@@ -1016,32 +1034,70 @@ def get_portfolio_4chart_overview(
             }
         )
 
-    chart3_data = []
-    total_nav = summary.get("totalEquity", 100000.0) or 100000.0
-    for pos in positions:
-        mkt_val = _clean_float(pos.get("marketValue", 0.0))
-        pct = _clean_float((mkt_val / total_nav * 100.0) if total_nav > 0 else 0.0)
+    # Chart 3 (Epic 1.1): Holdings Pie Chart as of selected [date] reacting dynamically
+    effective_selected_date = end_date or (perf_series[-1]["date"] if perf_series else date.today().isoformat())
+    target_d_obj = (
+        datetime.fromisoformat(effective_selected_date).date()
+        if isinstance(effective_selected_date, str)
+        else effective_selected_date
+    )
+
+    pos_rows_as_of = get_positions(db, user_id=user_id, tradedate=target_d_obj)
+    if not pos_rows_as_of and user_id != 1:
+        pos_rows_as_of = get_positions(db, user_id=1, tradedate=target_d_obj)
+
+    wl_rows = list(db.scalars(select(Watchlist)).all())
+    wl_ccy_map = {w.symbol.strip().upper(): w.currency.strip().upper() for w in wl_rows if w.symbol and w.currency}
+    fx_rates = get_latest_fx_rates(db, base_currency="USD")
+
+    chart3_data: list[dict[str, Any]] = []
+    total_holdings_val = 0.0
+    for pr in pos_rows_as_of:
+        qty = float(pr.quantity or 0.0)
+        if abs(qty) < 1e-6:
+            continue
+        sym = pr.symbol.strip().upper()
+        sym_ccy = wl_ccy_map.get(sym) or ("SGD" if sym.endswith(".SI") else ("HKD" if sym.endswith(".HK") else "USD"))
+        raw_price = _clean_float(pr.eodprice)
+        avg_price = _clean_float(pr.avgprice)
+        price = raw_price if raw_price > 0 else avg_price
+        val_local = qty * price
+        val_target = _convert_amount(val_local, sym_ccy, target_currency, fx_rates)
+        total_holdings_val += val_target
         chart3_data.append(
             {
                 "category": "Equities",
-                "name": pos.get("symbol", "Stock"),
-                "value": round(mkt_val, 2),
-                "percentage": round(pct, 2),
+                "symbol": sym,
+                "name": sym,
+                "quantity": round(qty, 4),
+                "price": round(price, 4),
+                "value": round(val_target, 2),
+                "percentage": 0.0,
                 "currency": target_currency,
             }
         )
-    cash_bal = _clean_float(summary.get("cashBalance", 0.0))
-    if cash_bal > 0:
-        cash_pct = _clean_float((cash_bal / total_nav * 100.0) if total_nav > 0 else 0.0)
-        chart3_data.append(
-            {
-                "category": "Cash",
-                "name": f"Cash ({target_currency})",
-                "value": round(cash_bal, 2),
-                "percentage": round(cash_pct, 2),
-                "currency": target_currency,
-            }
-        )
+
+    if total_holdings_val > 0:
+        for slice_item in chart3_data:
+            slice_item["percentage"] = round(slice_item["value"] / total_holdings_val * 100.0, 2)
+    chart3_data.sort(key=lambda item: float(item["value"]), reverse=True)
+
+    # Fallback to cash if no equity holdings
+    if not chart3_data:
+        cash_bal = _clean_float(summary.get("cashBalance", 0.0))
+        if cash_bal > 0:
+            chart3_data.append(
+                {
+                    "category": "Cash",
+                    "symbol": f"Cash ({target_currency})",
+                    "name": f"Cash ({target_currency})",
+                    "quantity": 1.0,
+                    "price": round(cash_bal, 2),
+                    "value": round(cash_bal, 2),
+                    "percentage": 100.0,
+                    "currency": target_currency,
+                }
+            )
 
     chart4_data = []
     prev_eq = None
@@ -1082,7 +1138,7 @@ def get_portfolio_4chart_overview(
         win_start = perf_series[0]["date"]
         win_end = perf_series[-1]["date"]
 
-        wl_rows = db.scalars(select(Watchlist)).all()
+        wl_rows = list(db.scalars(select(Watchlist)).all())
         wl_ccy_map = {w.symbol.strip().upper(): w.currency.strip().upper() for w in wl_rows if w.symbol and w.currency}
 
         t_rows = get_trades(db, user_id=user_id)
@@ -1145,8 +1201,13 @@ def get_portfolio_4chart_overview(
         "capitalPct": round((latest_cap / latest_eq * 100.0) if latest_eq > 0 else 0.0, 2),
         "margin": round(latest_loan, 2),
         "marginPct": round((latest_loan / latest_cap * 100.0) if latest_cap > 0 else 0.0, 2),
-        "totalPortfolio": round(latest_eq, 2),
-        "totalPortfolioPct": round(period_ret, 2),
+        "totalPortfolio": round(total_holdings_val if total_holdings_val > 0 else latest_eq, 2),
+        "totalPortfolioPct": round(
+            ((total_holdings_val - latest_cap) / latest_cap * 100.0)
+            if latest_cap > 0 and total_holdings_val > 0
+            else period_ret,
+            2,
+        ),
         "pctReturn": round(_clean_float(summary.get("pctReturn", period_ret)), 2),
         "currency": target_currency,
     }
@@ -1154,7 +1215,7 @@ def get_portfolio_4chart_overview(
     return {
         "parameters": {
             "currency": target_currency,
-            "selectedDate": perf_series[-1]["date"] if perf_series else date.today().isoformat(),
+            "selectedDate": effective_selected_date,
             "timeframe": timeframe,
         },
         "kpis": kpis_dict,
@@ -1166,6 +1227,7 @@ def get_portfolio_4chart_overview(
         "chart1_equity_vs_benchmark": chart1_data,
         "chart2_cumulative_pnl": chart2_data,
         "chart3_asset_allocation": chart3_data,
+        "chart3_holdings_pie": chart3_data,
         "chart4_daily_pnl_drawdown": chart4_data,
         "trade_annotations": trade_annotations,
         "capital_annotations": capital_annotations,
