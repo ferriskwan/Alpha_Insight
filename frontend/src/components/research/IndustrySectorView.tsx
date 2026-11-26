@@ -21,6 +21,7 @@ import {
   SectorCommitteeResponse,
   SectorNewsItem,
   AgentAnalystOutputDTO,
+  ModelOptionItem,
 } from '../../types/api';
 import { DisplayedScreenContext } from '../../design-system';
 
@@ -43,9 +44,37 @@ const GICS_SECTORS = [
   { ticker: 'XLRE', name: 'Real Estate' },
 ];
 
-const AVAILABLE_MODELS = [
-  { id: 'gemini-2.5-flash', label: 'gemini-2.5-flash (gemini)', provider: 'gemini' },
-  { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro (gemini)', provider: 'gemini' },
+const DEFAULT_MODELS: ModelOptionItem[] = [
+  {
+    id: 'gemini-4-neon',
+    label: 'Gemini 4 Neon (Default Committee Model)',
+    provider: 'gemini',
+    is_default: true,
+  },
+  {
+    id: 'gemini-4-argon',
+    label: 'Gemini 4 Argon',
+    provider: 'gemini',
+    is_default: false,
+  },
+  {
+    id: 'gemini-4-carbon',
+    label: 'Gemini 4 Carbon',
+    provider: 'gemini',
+    is_default: false,
+  },
+  {
+    id: 'gemini-4-hydrogen',
+    label: 'Gemini 4 Hydrogen',
+    provider: 'gemini',
+    is_default: false,
+  },
+  {
+    id: 'kimi-k2-0711-preview',
+    label: 'Moonshot Kimi K2',
+    provider: 'kimi',
+    is_default: false,
+  },
 ];
 
 export const IndustrySectorView: React.FC<IndustrySectorViewProps> = ({
@@ -60,7 +89,8 @@ export const IndustrySectorView: React.FC<IndustrySectorViewProps> = ({
   const [committeeData, setCommitteeData] = useState<SectorCommitteeResponse | null>(null);
   const [loadingCommittee, setLoadingCommittee] = useState<boolean>(false);
   const [refreshingCommittee, setRefreshingCommittee] = useState<boolean>(false);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [models, setModels] = useState<ModelOptionItem[]>(DEFAULT_MODELS);
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-4-neon');
   const [activeRoleTab, setActiveRoleTab] = useState<string>('executive_summary');
   const [showFormulaModal, setShowFormulaModal] = useState<boolean>(false);
 
@@ -80,6 +110,27 @@ export const IndustrySectorView: React.FC<IndustrySectorViewProps> = ({
   useEffect(() => {
     loadPerformance();
   }, [loadPerformance]);
+
+  // Load committee models from backend to align with Stock Analysis
+  useEffect(() => {
+    let mounted = true;
+    apiClient
+      .getCommitteeModels()
+      .then((modelItems) => {
+        if (!mounted) return;
+        if (modelItems && modelItems.length > 0) {
+          setModels(modelItems);
+          const def = modelItems.find((m) => m.is_default) || modelItems[0];
+          if (def) setSelectedModel(def.id);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load committee models:', err);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Load Sector Committee AI outputs
   const loadCommittee = useCallback(async (ticker: string) => {
@@ -110,7 +161,9 @@ export const IndustrySectorView: React.FC<IndustrySectorViewProps> = ({
   const handleRefreshCommittee = async () => {
     setRefreshingCommittee(true);
     try {
-      const res = await apiClient.refreshSectorCommittee(selectedTicker, 'gemini', selectedModel);
+      const chosenModelObj = models.find((m) => m.id === selectedModel);
+      const provider = chosenModelObj?.provider || 'gemini';
+      const res = await apiClient.refreshSectorCommittee(selectedTicker, provider, selectedModel);
       setCommitteeData(res);
     } catch (err) {
       console.error('Failed to execute sector committee:', err);
@@ -214,15 +267,19 @@ export const IndustrySectorView: React.FC<IndustrySectorViewProps> = ({
 
           {/* Model Selector */}
           <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
-            <span className="text-xs font-semibold text-slate-500">Model:</span>
+            <label htmlFor="sector-model-select" className="text-xs font-semibold text-slate-500">
+              Model:
+            </label>
             <select
+              id="sector-model-select"
+              aria-label="Agent Model"
               value={selectedModel}
               onChange={(e) => setSelectedModel(e.target.value)}
               className="bg-transparent text-xs font-medium text-slate-800 focus:outline-none cursor-pointer"
             >
-              {AVAILABLE_MODELS.map((m) => (
+              {models.map((m) => (
                 <option key={m.id} value={m.id}>
-                  {m.label}
+                  {m.id} ({m.provider})
                 </option>
               ))}
             </select>

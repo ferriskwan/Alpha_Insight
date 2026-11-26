@@ -9,6 +9,11 @@ import apiClient from '../../frontend/src/services/apiClient';
 describe('Epic 1.1: By Industry / Sector Research Frontend Tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(apiClient, 'getCommitteeModels').mockResolvedValue([
+      { id: 'gemini-4-neon', label: 'Gemini 4 Neon', provider: 'gemini', is_default: true },
+      { id: 'gemini-4-argon', label: 'Gemini 4 Argon', provider: 'gemini', is_default: false },
+      { id: 'kimi-k2-0711-preview', label: 'Moonshot Kimi K2', provider: 'kimi', is_default: false },
+    ]);
   });
 
   it('renders IndustrySectorView with sector selector, RRG card, cited news, and 4-analyst committee', async () => {
@@ -166,11 +171,71 @@ describe('Epic 1.1: By Industry / Sector Research Frontend Tests', () => {
       'https://ai.studio/projects'
     );
   });
+
+  it('renders model options matching Stock Analysis and dispatches chosen model and provider', async () => {
+    vi.spyOn(apiClient, 'getSectorPerformance').mockResolvedValue({
+      horizon: '1D',
+      asOfDate: '2026-11-26',
+      benchmark: 'SPY',
+      benchmarkReturn: 0.85,
+      sectors: [],
+    });
+
+    vi.spyOn(apiClient, 'getSectorCommittee').mockResolvedValue({
+      run_id: 101,
+      symbol: 'XLK',
+      sector_name: 'Technology',
+      provider: 'gemini',
+      model: 'gemini-4-neon',
+      consensus_bias: 'Bullish',
+      consensus_confidence: 85,
+      executive_summary: 'Consensus synthesis: Technology exhibits leadership.',
+      vote_breakdown: { bullish: 3, neutral: 1, bearish: 0 },
+      outputs: [],
+      news_sources: [],
+      created_at: '2026-11-26T10:00:00Z',
+    });
+
+    const refreshSpy = vi.spyOn(apiClient, 'refreshSectorCommittee').mockResolvedValue({
+      run_id: 102,
+      symbol: 'XLK',
+      sector_name: 'Technology',
+      provider: 'kimi',
+      model: 'kimi-k2-0711-preview',
+      consensus_bias: 'Neutral',
+      consensus_confidence: 70,
+      executive_summary: 'Refreshed synthesis.',
+      vote_breakdown: {},
+      outputs: [],
+      news_sources: [],
+      created_at: '2026-11-26T10:05:00Z',
+    });
+
+    render(<IndustrySectorView />);
+
+    const modelSelect = await screen.findByRole('combobox', { name: /Agent Model/i });
+    expect(modelSelect).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /gemini-4-neon \(gemini\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /gemini-4-argon \(gemini\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /kimi-k2-0711-preview \(kimi\)/i })).toBeInTheDocument();
+
+    // Select Kimi model and execute committee run
+    fireEvent.change(modelSelect, { target: { value: 'kimi-k2-0711-preview' } });
+    const runBtn = screen.getByRole('button', { name: /AI Analysis/i });
+    fireEvent.click(runBtn);
+
+    expect(refreshSpy).toHaveBeenCalledWith('XLK', 'kimi', 'kimi-k2-0711-preview');
+  });
 });
 
 describe('Epic 1.1: Portfolio Overview Refinements Frontend Tests', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(apiClient, 'getCommitteeModels').mockResolvedValue([
+      { id: 'gemini-4-neon', label: 'Gemini 4 Neon', provider: 'gemini', is_default: true },
+      { id: 'gemini-4-argon', label: 'Gemini 4 Argon', provider: 'gemini', is_default: false },
+      { id: 'kimi-k2-0711-preview', label: 'Moonshot Kimi K2', provider: 'kimi', is_default: false },
+    ]);
   });
 
   it('renders 2-column layout, default 6M timeframe, holdings pie chart, and AI Analysis button', async () => {
