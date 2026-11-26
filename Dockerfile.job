@@ -17,7 +17,7 @@ COPY pyproject.toml ./
 RUN uv pip install --system -r pyproject.toml || pip install --no-cache-dir requests yfinance psycopg2-binary sqlalchemy pydantic-settings matplotlib mplfinance mplcursors
 
 # Copy pipeline batch scripts and backend models
-COPY main.py marketdata.py ProcessData.py charting.py run_mark_to_market.py run_daily_margin_interest.py run_portfolio_summary.py ./
+COPY *.py ./
 COPY backend/ ./backend/
 
 # Create non-root user

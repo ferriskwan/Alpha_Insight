@@ -126,6 +126,7 @@ class TestDailyJobPipelineUAT005:
             patch("run_mark_to_market.run_mark_to_market") as mock_m2m,
             patch("run_daily_margin_interest.run_daily_margin_interest") as mock_margin,
             patch("run_portfolio_summary.run_portfolio_summary") as mock_port,
+            patch("run_sector_research.run_sector_research") as mock_sector,
         ):
             main.main()
 
@@ -137,6 +138,7 @@ class TestDailyJobPipelineUAT005:
             mock_m2m.assert_called_once()
             mock_margin.assert_called_once()
             mock_port.assert_called_once()
+            mock_sector.assert_called_once()
 
     def test_job_execution_log_repository_recording(self, db_session: Session) -> None:
         """Verify job_execution_log recording via sys_repo in database."""

@@ -29,7 +29,7 @@ COPY pyproject.toml ./
 RUN uv pip install --system -r pyproject.toml || pip install --no-cache-dir fastapi uvicorn pydantic-settings psycopg2-binary sqlalchemy requests yfinance matplotlib mplfinance mplcursors
 
 # Copy application source code
-COPY ProcessData.py charting.py marketdata.py run_mark_to_market.py run_daily_margin_interest.py run_portfolio_summary.py ./
+COPY *.py ./
 COPY backend/ ./backend/
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
