@@ -309,4 +309,43 @@ describe('TransactionsView Dual Ledger & Drag-and-Drop Grouping (UAT Specificati
     expect(screen.getAllByText('Avg Buy').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('Avg Sell').length).toBeGreaterThanOrEqual(1);
   });
+
+  it('renders "Inv Amt" in sub-aggregation strip and table footer matching Bal behavior', async () => {
+    render(<TransactionsView />);
+
+    // Switch grouping to Symbol
+    const removeTradeDateBtn = await screen.findByRole('button', { name: /Remove Trade Date/i });
+    fireEvent.click(removeTradeDateBtn);
+
+    const symbolBtn = screen.getByRole('button', { name: /Symbol/i });
+    fireEvent.click(symbolBtn);
+
+    // Verify "Inv Amt" is rendered in the sub-aggregation strip
+    const strips = await screen.findAllByTestId('sub-aggregation-strip');
+    expect(strips).toHaveLength(2);
+
+    // 5E2.SI has Buy 20,000, Sell 10,000 -> Inv Amt = +10,000.00 (text-blue-700)
+    // Appears in both the sub-aggregation strip and the SGD currency subtotal
+    const positiveInvAmts = screen.getAllByText('+S$10,000.00');
+    expect(positiveInvAmts.length).toBeGreaterThanOrEqual(2);
+    positiveInvAmts.forEach((el) => {
+      expect(el).toHaveClass('text-blue-700');
+    });
+
+    // SHORTCO has Buy 0, Sell 50,000 -> Inv Amt = -50,000.00 (text-amber-700)
+    const negativeInvAmts = screen.getAllByText('-$50,000.00');
+    expect(negativeInvAmts.length).toBeGreaterThanOrEqual(1);
+    negativeInvAmts.forEach((el) => {
+      expect(el).toHaveClass('text-amber-700');
+    });
+
+    // Verify footer subtotals contain Inv Amt
+    const subtotalRows = screen.getAllByTestId(/^subtotal-row-/);
+    expect(subtotalRows.length).toBeGreaterThanOrEqual(1);
+    expect(within(subtotalRows[0]).getByText(/Inv Amt:/i)).toBeInTheDocument();
+
+    // Verify grand total contains Inv Amt
+    const grandTotalRow = screen.getByTestId('grand-total-row');
+    expect(within(grandTotalRow).getByText(/Inv Amt:/i)).toBeInTheDocument();
+  });
 });

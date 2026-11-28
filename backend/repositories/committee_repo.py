@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import desc, select
@@ -647,6 +648,22 @@ def build_sector_committee_context(
         hz_match = next((s for s in hz_perf.get("sectors", []) if s.get("ticker") == clean_sym), None)
         returns_by_horizon[hz] = hz_match.get("value", 0.0) if hz_match else 0.0
 
+    # Compile cross-sector metrics for all 11 GICS sectors
+    all_sectors_metrics = []
+    for s_code, s_title in GICS_SECTOR_NAMES.items():
+        s_m = next((sec for sec in perf_data.get("sectors", []) if sec.get("ticker") == s_code), None)
+        all_sectors_metrics.append(
+            {
+                "ticker": s_code,
+                "name": s_title,
+                "weight": s_m.get("weight", 0.0) if s_m else 0.0,
+                "return_1m": s_m.get("value", 0.0) if s_m else 0.0,
+                "quadrant": s_m.get("relativeRotation", "Leading") if s_m else "Leading",
+                "rs_score": s_m.get("rsScore", 1.0) if s_m else 1.0,
+                "rs_momentum": s_m.get("rsMomentum", 0.0) if s_m else 0.0,
+            }
+        )
+
     sector_metrics = {
         "symbol": clean_sym,
         "sector_name": sector_name,
@@ -654,6 +671,7 @@ def build_sector_committee_context(
         "returns": returns_by_horizon,
         "rotation": rotation_info,
         "benchmark_return_1m": perf_data.get("benchmarkReturn", 0.0),
+        "all_sectors": all_sectors_metrics,
     }
 
     # 2. Fetch top 5 headlines from Yahoo Finance RSS
@@ -737,7 +755,18 @@ def get_latest_sector_committee_payload(
 
     news_items = fetch_sector_rss_news(clean_sym, limit=5)
 
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    has_run_today = bool(
+        target_run
+        and target_run.created_at
+        and (
+            (target_run.created_at.tzinfo and target_run.created_at >= today_start)
+            or (not target_run.created_at.tzinfo and target_run.created_at >= today_start.replace(tzinfo=None))
+        )
+    )
+
     return {
+        "daily_quota_reached": has_run_today,
         "run": (
             {
                 "id": target_run.id,

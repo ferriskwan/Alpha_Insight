@@ -137,8 +137,8 @@ describe('Epic 0.6: Portfolio Overview Upgrade Frontend Tests', () => {
 
     expect(await screen.findByText('Portfolio Overview')).toBeInTheDocument();
 
-    // By default, Amount mode shows currency values
-    expect(screen.getByText(/SGD 5,000.00/i)).toBeInTheDocument();
+    // By default, Amount mode shows currency values without decimals
+    expect(screen.getByText(/SGD 5,000\b/i)).toBeInTheDocument();
 
     // Switch to Percentage mode
     const pctButton = screen.getByRole('button', { name: /Percentage/i });
@@ -208,5 +208,35 @@ describe('Epic 0.6: Portfolio Overview Upgrade Frontend Tests', () => {
         expect.objectContaining({ date: '2026-11-18' })
       );
     });
+  });
+
+  it('supports layout mode switching and formats currency values without decimals', async () => {
+    vi.spyOn(apiClient, 'getPortfolioOverview').mockResolvedValue(mockOverviewResponse);
+    vi.spyOn(apiClient, 'getPortfolioCommentary').mockResolvedValue(mockCommentaryResponse);
+
+    render(<PortfolioOverview />);
+
+    expect(await screen.findByText('Portfolio Overview')).toBeInTheDocument();
+
+    // Verify layout buttons are present
+    const autoBtn = screen.getByRole('button', { name: /Auto/i });
+    const stackedBtn = screen.getByRole('button', { name: /Stacked/i });
+    const sideBySideBtn = screen.getByRole('button', { name: /Side-by-Side/i });
+
+    expect(autoBtn).toBeInTheDocument();
+    expect(stackedBtn).toBeInTheDocument();
+    expect(sideBySideBtn).toBeInTheDocument();
+
+    // Switch to stacked mode explicitly
+    fireEvent.click(stackedBtn);
+    expect(stackedBtn).toHaveClass('text-blue-700');
+
+    // Switch to side-by-side mode
+    fireEvent.click(sideBySideBtn);
+    expect(sideBySideBtn).toHaveClass('text-blue-700');
+
+    // Verify KPI currency badges display without decimals (e.g., SGD 5,000 and SGD 80,000)
+    expect(screen.getByText(/SGD 5,000\b/)).toBeInTheDocument();
+    expect(screen.getByText(/SGD 80,000\b/)).toBeInTheDocument();
   });
 });

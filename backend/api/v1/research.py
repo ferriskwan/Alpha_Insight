@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
+from backend.db.models import AgentCommitteeRun
 from backend.db.session import get_db_session
 from backend.dependencies import get_current_user_optional
 from backend.repositories.committee_repo import (
@@ -165,6 +168,26 @@ async def refresh_sector_committee(
     """On-demand execution of the 4-analyst Sector Committee with RSS & Gemini Grounding."""
     user_id = user.id if user else 1
     clean_sym = symbol.strip().upper()
+
+    # Enforce strict 1-analysis-per-day quota
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    existing_today_run = db.scalar(
+        select(AgentCommitteeRun)
+        .where(AgentCommitteeRun.created_at >= today_start)
+        .order_by(desc(AgentCommitteeRun.created_at), desc(AgentCommitteeRun.id))
+        .limit(1)
+    )
+    if existing_today_run:
+        res = get_latest_sector_committee_payload(
+            db=db, symbol=clean_sym, run_id=existing_today_run.id, user_id=user_id
+        )
+        res["daily_quota_reached"] = True
+        res["daily_quota_message"] = (
+            f"Daily AI Analysis quota reached (1 run per day). "
+            f"Loaded today's active analysis (Run #{existing_today_run.id})."
+        )
+        return res
+
     ctx = build_sector_committee_context(db=db, symbol=clean_sym, user_id=user_id)
     orch_res = await run_sector_committee_orchestration(
         symbol=clean_sym,

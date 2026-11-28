@@ -61,6 +61,7 @@ export interface TradeGroup {
   balanceShares: number;
   realizedPnL: number;
   unrealizedPnL: number;
+  invAmt: number;
   // Legacy compatibility fields
   totalQty: number;
   totalConsideration: number;
@@ -802,6 +803,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
       const totalQty = buyQty + sellQty;
       const totalConsideration = buyConsideration + sellConsideration;
       const avgPrice = totalQty > 0 ? totalConsideration / totalQty : 0;
+      const invAmt = buyConsideration - sellConsideration;
 
       groups.push({
         key,
@@ -816,6 +818,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
         balanceShares,
         realizedPnL,
         unrealizedPnL,
+        invAmt,
         totalQty,
         totalConsideration,
         avgPrice,
@@ -922,6 +925,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
         }
       });
 
+      const invAmt = totalBuyConsideration - totalSellConsideration;
+
       return {
         count: tradeList.length,
         totalBuyQty,
@@ -932,6 +937,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
         avgSellPrice,
         netBalance,
         realizedPnL,
+        invAmt,
       };
     };
 
@@ -996,6 +1002,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
         totalBuyConsiderationUSD: consolidatedBuyCostUSD,
         totalSellConsiderationUSD: consolidatedSellCostUSD,
         realizedPnLUSD: consolidatedRealizedPnLUSD,
+        invAmtUSD: consolidatedBuyCostUSD - consolidatedSellCostUSD,
       },
     };
   }, [trades, watchlistCurrencyMap]);
@@ -1007,6 +1014,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
       totalBuyConsideration: multiCurrencySummaries.consolidated.totalBuyConsiderationUSD,
       totalSellConsideration: multiCurrencySummaries.consolidated.totalSellConsiderationUSD,
       totalRealizedPnL: multiCurrencySummaries.consolidated.realizedPnLUSD,
+      invAmt: multiCurrencySummaries.consolidated.invAmtUSD,
       totalConsideration:
         multiCurrencySummaries.consolidated.totalBuyConsiderationUSD +
         multiCurrencySummaries.consolidated.totalSellConsiderationUSD,
@@ -1674,6 +1682,32 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                                     </div>
                                     <div className="bg-white px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1 shadow-2xs">
                                       <span className="text-[10px] uppercase font-sans text-slate-400 font-semibold">
+                                        Inv Amt
+                                      </span>
+                                      <span
+                                        className={`font-bold ${
+                                          group.invAmt > 0
+                                            ? 'text-blue-700'
+                                            : group.invAmt < 0
+                                            ? 'text-amber-700'
+                                            : 'text-slate-600'
+                                        }`}
+                                      >
+                                        {group.invAmt > 0
+                                          ? `+${groupPrefix}${group.invAmt.toLocaleString(undefined, {
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                            })}`
+                                          : group.invAmt < 0
+                                          ? `-${groupPrefix}${Math.abs(group.invAmt).toLocaleString(undefined, {
+                                              minimumFractionDigits: 2,
+                                              maximumFractionDigits: 2,
+                                            })}`
+                                          : `${groupPrefix}0.00`}
+                                      </span>
+                                    </div>
+                                    <div className="bg-white px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1 shadow-2xs">
+                                      <span className="text-[10px] uppercase font-sans text-slate-400 font-semibold">
                                         Realized
                                       </span>
                                       <span
@@ -1871,26 +1905,52 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                             })}
                           </td>
                           <td className="py-2.5 px-3 text-right font-sans">
-                            <span className="text-[11px] font-semibold text-slate-700">
-                              Realized:{' '}
-                              <span
-                                className={
-                                  sub.realizedPnL >= 0
-                                    ? 'text-emerald-700 font-bold'
-                                    : 'text-rose-700 font-bold'
-                                }
-                              >
-                                {sub.realizedPnL >= 0
-                                  ? `+${prefix}${sub.realizedPnL.toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}`
-                                  : `-${prefix}${Math.abs(sub.realizedPnL).toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}`}
+                            <div className="flex flex-col items-end gap-0.5">
+                              <span className="text-[11px] font-semibold text-slate-700">
+                                Inv Amt:{' '}
+                                <span
+                                  className={
+                                    sub.invAmt > 0
+                                      ? 'text-blue-700 font-bold'
+                                      : sub.invAmt < 0
+                                      ? 'text-amber-700 font-bold'
+                                      : 'text-slate-600 font-bold'
+                                  }
+                                >
+                                  {sub.invAmt > 0
+                                    ? `+${prefix}${sub.invAmt.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}`
+                                    : sub.invAmt < 0
+                                    ? `-${prefix}${Math.abs(sub.invAmt).toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}`
+                                    : `${prefix}0.00`}
+                                </span>
                               </span>
-                            </span>
+                              <span className="text-[11px] font-semibold text-slate-700">
+                                Realized:{' '}
+                                <span
+                                  className={
+                                    sub.realizedPnL >= 0
+                                      ? 'text-emerald-700 font-bold'
+                                      : 'text-rose-700 font-bold'
+                                  }
+                                >
+                                  {sub.realizedPnL >= 0
+                                    ? `+${prefix}${sub.realizedPnL.toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}`
+                                    : `-${prefix}${Math.abs(sub.realizedPnL).toLocaleString(undefined, {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}`}
+                                </span>
+                              </span>
+                            </div>
                           </td>
                           <td className="py-2.5 px-2"></td>
                         </tr>
@@ -1935,26 +1995,52 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ initialTab =
                         })}
                       </td>
                       <td className="py-3 px-3 text-right font-sans">
-                        <span className="text-[11px] font-semibold text-slate-800">
-                          Realized:{' '}
-                          <span
-                            className={
-                              multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
-                                ? 'text-emerald-700 font-bold'
-                                : 'text-rose-700 font-bold'
-                            }
-                          >
-                            {multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
-                              ? `+$${multiCurrencySummaries.consolidated.realizedPnLUSD.toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}`
-                              : `-$${Math.abs(multiCurrencySummaries.consolidated.realizedPnLUSD).toLocaleString(undefined, {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2,
-                                })}`}
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="text-[11px] font-semibold text-slate-800">
+                            Inv Amt:{' '}
+                            <span
+                              className={
+                                multiCurrencySummaries.consolidated.invAmtUSD > 0
+                                  ? 'text-blue-700 font-bold'
+                                  : multiCurrencySummaries.consolidated.invAmtUSD < 0
+                                  ? 'text-amber-700 font-bold'
+                                  : 'text-slate-600 font-bold'
+                              }
+                            >
+                              {multiCurrencySummaries.consolidated.invAmtUSD > 0
+                                ? `+$${multiCurrencySummaries.consolidated.invAmtUSD.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`
+                                : multiCurrencySummaries.consolidated.invAmtUSD < 0
+                                ? `-$${Math.abs(multiCurrencySummaries.consolidated.invAmtUSD).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`
+                                : '$0.00'}
+                            </span>
                           </span>
-                        </span>
+                          <span className="text-[11px] font-semibold text-slate-800">
+                            Realized:{' '}
+                            <span
+                              className={
+                                multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
+                                  ? 'text-emerald-700 font-bold'
+                                  : 'text-rose-700 font-bold'
+                              }
+                            >
+                              {multiCurrencySummaries.consolidated.realizedPnLUSD >= 0
+                                ? `+$${multiCurrencySummaries.consolidated.realizedPnLUSD.toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`
+                                : `-$${Math.abs(multiCurrencySummaries.consolidated.realizedPnLUSD).toLocaleString(undefined, {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`}
+                            </span>
+                          </span>
+                        </div>
                       </td>
                       <td className="py-3 px-2"></td>
                     </tr>

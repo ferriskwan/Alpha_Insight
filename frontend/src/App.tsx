@@ -243,6 +243,7 @@ export const App: React.FC = () => {
         <IndustrySectorView
           onReferenceInNote={handleReferenceInNote}
           onContextUpdate={handleContextUpdate}
+          isSplitView={splitMode !== 'single'}
         />
       );
     }

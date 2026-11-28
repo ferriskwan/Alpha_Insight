@@ -588,6 +588,9 @@ export interface SectorCommitteeResponse {
   outputs: SectorCommitteeOutputItem[];
   news_sources: SectorNewsItem[];
   fallback_warning?: string | null;
+  daily_quota_reached?: boolean;
+  daily_quota_message?: string;
+  history?: Array<{ run_id: number; created_at: string; consensus_bias: string; model: string }>;
   created_at: string;
 }
 

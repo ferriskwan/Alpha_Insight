@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   TrendingUp,
   TrendingDown,
@@ -17,6 +17,9 @@ import {
   Wallet,
   ChevronLeft,
   ChevronRight,
+  LayoutGrid,
+  Columns,
+  Rows,
 } from 'lucide-react';
 import apiClient from '../../services/apiClient';
 import {
@@ -46,7 +49,7 @@ const formatHoldingsKValue = (val: number): string => {
     return `$${(val / 1_000_000).toFixed(1)}M`;
   }
   if (Math.abs(val) >= 1_000) {
-    return `$${(val / 1_000).toFixed(1)}k`;
+    return `$${(val / 1_000).toFixed(0)}k`;
   }
   return `$${val.toFixed(0)}`;
 };
@@ -77,10 +80,10 @@ const KpiBadgeWithTooltip: React.FC<TooltipBadgeProps> = ({
 
   const displayPrimary = isPctMode
     ? `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(2)}%`
-    : `${currency} ${amountVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    : `${currency} ${amountVal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
   const displaySecondary = isPctMode
-    ? `${currency} ${amountVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    ? `${currency} ${amountVal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
     : `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(2)}%`;
 
   const trendColor =
@@ -166,6 +169,57 @@ export const PortfolioOverview: React.FC = () => {
   // Synchronized crosshair index between Chart 1 and Chart 2
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [hoveredSliceIdx, setHoveredSliceIdx] = useState<number | null>(null);
+
+  // Responsive layout state: 'auto' | 'stacked' | 'side-by-side'
+  const [layoutMode, setLayoutMode] = useState<'auto' | 'stacked' | 'side-by-side'>(() => {
+    try {
+      return (localStorage.getItem('alpha_insight_portfolio_layout_mode') as any) || 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+
+  const [containerWidth, setContainerWidth] = useState<number>(1600);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('alpha_insight_portfolio_layout_mode', layoutMode);
+    } catch {
+      // ignore
+    }
+  }, [layoutMode]);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.getBoundingClientRect().width);
+      } else {
+        setContainerWidth(window.innerWidth);
+      }
+    };
+    updateWidth();
+
+    if (!containerRef.current || typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const isStacked = useMemo(() => {
+    if (layoutMode === 'stacked') return true;
+    if (layoutMode === 'side-by-side') return false;
+    // Auto mode: ascertain available width (< 1400px automatically stacks below)
+    return containerWidth < 1400;
+  }, [layoutMode, containerWidth]);
 
   const fetchOverview = async (ccy = currency, tf = timeframe, dt = selectedDate) => {
     setLoading(true);
@@ -471,7 +525,7 @@ export const PortfolioOverview: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 w-full pb-12">
+    <div ref={containerRef} className="space-y-4 w-full pb-8">
       {/* AI Fallback Warning Banner if credits depleted */}
       {(commentaryData?.fallback_warning || data?.fallback_warning) && (
         <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-md flex items-start gap-3 shadow-xs">
@@ -581,6 +635,49 @@ export const PortfolioOverview: React.FC = () => {
             ))}
           </div>
 
+          {/* Layout Mode Switcher */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
+            <button
+              type="button"
+              onClick={() => setLayoutMode('auto')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                layoutMode === 'auto'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Auto: Smartly reflow commentary below charts when space is constrained (<1400px)"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Auto</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode('stacked')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                layoutMode === 'stacked'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Stacked: Move Executive Commentary below the 4 charts"
+            >
+              <Rows className="w-3.5 h-3.5" />
+              <span>Stacked</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode('side-by-side')}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                layoutMode === 'side-by-side'
+                  ? 'bg-white text-blue-700 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Side-by-Side: Graphs on left (8 cols), Commentary on right (4 cols)"
+            >
+              <Columns className="w-3.5 h-3.5" />
+              <span>Side-by-Side</span>
+            </button>
+          </div>
+
           {/* AI Analysis Button */}
           <button
             type="button"
@@ -679,10 +776,10 @@ export const PortfolioOverview: React.FC = () => {
         <span>Cash Available</span>
       </div>
 
-            {/* 3. Main Body: 2-Column Institutional Workstation Layout (Left: Graphs, Right: AI Commentary) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        {/* Left Column (8 cols): 4 Institutional Graphs */}
-        <div className="lg:col-span-8 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs space-y-5">
+            {/* 3. Main Body: Institutional Workstation Layout (Adaptive Stacked vs Side-by-Side) */}
+      <div className={isStacked ? "space-y-5" : "grid grid-cols-1 lg:grid-cols-12 gap-5 items-start"}>
+        {/* Institutional Graphs Container */}
+        <div className={`${isStacked ? "w-full" : "lg:col-span-8"} bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs space-y-4`}>
           {/* Global Timeframe Selector Toolbar (without redundant heading) */}
           <div className="flex items-center justify-end gap-3 border-b border-slate-100 pb-3">
             <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg border border-slate-200">
@@ -703,7 +800,7 @@ export const PortfolioOverview: React.FC = () => {
             </div>
           </div>
 
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Chart 1: Total Portfolio Size, Capital, Margin over Time (Top-Left) */}
           <div className="space-y-2 bg-white p-3 rounded-lg border border-slate-200">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1441,7 +1538,7 @@ export const PortfolioOverview: React.FC = () => {
 
                           const color = item.category === 'Cash' ? '#34D399' : STOCK_COLORS[idx % STOCK_COLORS.length];
                           const isHovered = hoveredSliceIdx === idx;
-                          const sliceTitle = `${item.symbol || item.name} | Qty: ${Number(item.quantity || 0).toLocaleString()} | Val: ${currency} ${Number(item.value).toLocaleString(undefined, { minimumFractionDigits: 2 })} (${pct.toFixed(1)}%)`;
+                          const sliceTitle = `${item.symbol || item.name} | Qty: ${Number(item.quantity || 0).toLocaleString()} | Val: ${currency} ${Number(item.value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} (${pct.toFixed(1)}%)`;
                           return (
                             <path
                               key={idx}
@@ -1455,7 +1552,7 @@ export const PortfolioOverview: React.FC = () => {
                               onMouseEnter={() => setHoveredSliceIdx(idx)}
                               onMouseLeave={() => setHoveredSliceIdx(null)}
                             >
-                              <title>{`${item.symbol || item.name} | Qty: ${Number(item.quantity || 0).toLocaleString()} | Val: ${currency} ${Number(item.value).toLocaleString(undefined, { minimumFractionDigits: 2 })} (${pct.toFixed(1)}%)`}</title>
+                              <title>{`${item.symbol || item.name} | Qty: ${Number(item.quantity || 0).toLocaleString()} | Val: ${currency} ${Number(item.value).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} (${pct.toFixed(1)}%)`}</title>
                             </path>
                           );
                         });
@@ -1528,8 +1625,8 @@ export const PortfolioOverview: React.FC = () => {
                           <span className="text-white font-semibold">
                             {currency}{' '}
                             {Number(chart3Data[hoveredSliceIdx].value ?? 0).toLocaleString(undefined, {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
                             })}
                           </span>
                         </div>
@@ -1760,8 +1857,8 @@ export const PortfolioOverview: React.FC = () => {
           </div>
         </div>
         </div>
-        {/* Right Column (4 cols): AI Commentary (Without marketing titles, with fallback alert) */}
-        <div className="lg:col-span-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4">
+        {/* Executive Commentary Container (Adaptive Stacked Below vs Right Column) */}
+        <div className={`${isStacked ? "w-full" : "lg:col-span-4"} bg-white p-4 rounded-xl border border-slate-200 shadow-xs space-y-4`}>
           <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
             <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-blue-700" />
@@ -1793,8 +1890,8 @@ export const PortfolioOverview: React.FC = () => {
             </div>
           )}
 
-          {/* 4 Stacked Commentary Quadrants */}
-          <div className="space-y-3">
+          {/* Commentary Quadrants: Grid when stacked below, vertical list when side-by-side */}
+          <div className={isStacked ? "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" : "space-y-3"}>
             {/* Quadrant 1: Technical */}
             <div className="p-3.5 rounded-lg border border-slate-200 bg-slate-50 space-y-1.5">
               <div className="flex items-center justify-between">
