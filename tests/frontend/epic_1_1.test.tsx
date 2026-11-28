@@ -104,7 +104,7 @@ describe('Epic 1.1: By Industry / Sector Research Frontend Tests', () => {
 
     // 1. Header & Sector selector
     expect(await screen.findByText('By Industry / Sector Research')).toBeInTheDocument();
-    expect(screen.getByText('Relative Rotation Quadrant')).toBeInTheDocument();
+    expect(screen.getByText('GICS Sector Performance Heatmap')).toBeInTheDocument();
 
     // 2. Action Button labeled "AI Analysis"
     expect(screen.getByRole('button', { name: /AI Analysis/i })).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe('Epic 1.1: By Industry / Sector Research Frontend Tests', () => {
     );
   });
 
-  it('renders model options matching Stock Analysis and dispatches chosen model and provider', async () => {
+  it('removes redundant dropdown lists and executes AI Analysis with 1/day rate limit', async () => {
     vi.spyOn(apiClient, 'getSectorPerformance').mockResolvedValue({
       horizon: '1D',
       asOfDate: '2026-11-26',
@@ -200,8 +200,8 @@ describe('Epic 1.1: By Industry / Sector Research Frontend Tests', () => {
       run_id: 102,
       symbol: 'XLK',
       sector_name: 'Technology',
-      provider: 'kimi',
-      model: 'kimi-k2-0711-preview',
+      provider: 'gemini',
+      model: 'gemini-4-neon',
       consensus_bias: 'Neutral',
       consensus_confidence: 70,
       executive_summary: 'Refreshed synthesis.',
@@ -213,18 +213,15 @@ describe('Epic 1.1: By Industry / Sector Research Frontend Tests', () => {
 
     render(<IndustrySectorView />);
 
-    const modelSelect = await screen.findByRole('combobox', { name: /Agent Model/i });
-    expect(modelSelect).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /gemini-4-neon \(gemini\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /gemini-4-argon \(gemini\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /kimi-k2-0711-preview \(kimi\)/i })).toBeInTheDocument();
+    // Dropdowns removed per user request:
+    expect(screen.queryByRole('combobox', { name: /Agent Model/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: /Sector/i })).not.toBeInTheDocument();
 
-    // Select Kimi model and execute committee run
-    fireEvent.change(modelSelect, { target: { value: 'kimi-k2-0711-preview' } });
+    // AI Analysis button dispatches with default model and enforces 1/day limit
     const runBtn = screen.getByRole('button', { name: /AI Analysis/i });
     fireEvent.click(runBtn);
 
-    expect(refreshSpy).toHaveBeenCalledWith('XLK', 'kimi', 'kimi-k2-0711-preview');
+    expect(refreshSpy).toHaveBeenCalledWith('XLK', 'gemini', 'gemini-4-neon');
   });
 });
 
@@ -396,7 +393,7 @@ describe('Epic 1.1: Portfolio Overview Refinements Frontend Tests', () => {
 
     // 4. Total Portfolio KPI badge reflects holdings aggregation
     expect(screen.getByText(/Total Portfolio/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/287,517.05/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/287,517\b/).length).toBeGreaterThan(0);
 
     // 5. Timeframe defaults to 6M
     const tf6M = screen.getByRole('button', { name: '6M' });
